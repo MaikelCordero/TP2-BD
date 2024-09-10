@@ -1,0 +1,48 @@
+﻿@model List<EmpleadoModel>
+@{
+    ViewData["Title"] = "LISTA EMPLEADOS";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<div class="card shadow-lg border-0 rounded" style="width: 100%;">
+    <div class="card-header bg-primary text-white text-center">
+        <h4 class="mb-0">Lista de Empleados</h4>
+    </div>
+    <div class="card-body">
+        <div class="d-flex justify-content-between mb-3">
+            <h5 class="card-title">Empleados Registrados</h5>
+            <a asp-action="Guardar" asp-controller="Mantenedor" class="btn btn-success">
+                <i class="fas fa-plus-circle"></i> Crear nuevo Empleado
+            </a>
+        </div>
+        <hr />
+        <table class="table table-hover table-striped table-bordered">
+            <thead class="thead-dark">
+                <tr>
+                    <th>Nombre</th>
+                    <th>Salario</th>
+                    <th class="text-center">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in Model)
+                {
+                    <tr>
+                        <td>@item.Nombre</td>
+                        <td>@item.Salario</td>
+                        <td class="text-center">
+                            <a asp-action="Editar" asp-route-id="@item.id" class="btn btn-warning btn-sm">
+                                <i class="fas fa-edit"></i> Editar
+                            </a>
+                            <a asp-action="Eliminar" asp-route-id="@item.id" class="btn btn-danger btn-sm">
+                                <i class="fas fa-trash-alt"></i> Eliminar
+                            </a>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+
