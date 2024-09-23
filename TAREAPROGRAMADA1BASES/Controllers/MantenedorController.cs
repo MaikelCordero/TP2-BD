@@ -34,20 +34,39 @@ namespace TAREAPROGRAMADA1BASES.Controllers
         //Recibe un objeto y lo guarda en la BD
         public IActionResult Guardar(EmpleadoModel oEmpleado)
         {
+            // Validar si el nombre ya existe en la base de datos
+            if (_EmpleadoDatos.ExisteNombre(oEmpleado.Nombre))
+            {
+                ModelState.AddModelError("Nombre", "El nombre ya está registrado");
+            }
 
+            // Validar si la identidad ya existe en la base de datos
+            if (_EmpleadoDatos.ExisteIdentidad(oEmpleado.IDENTIDAD))
+            {
+                ModelState.AddModelError("IDENTIDAD", "La identificación ya está registrada");
+            }
+
+            // Verificar si el modelo es válido
             if (!ModelState.IsValid)
-                return View();
+            {
+                // Si hay errores, volver a cargar la vista con los mensajes de error
+                return View(oEmpleado);
+            }
 
+            // Si no hay errores, proceder con el guardado
             var respuesta = _EmpleadoDatos.Guardar(oEmpleado);
             if (respuesta)
                 return RedirectToAction("listar");
-            else 
-                return View();
+            else
+                return View(oEmpleado);
         }
 
         public IActionResult DEV()
         {
             return View();
         }
+
+
+
     }
 }
