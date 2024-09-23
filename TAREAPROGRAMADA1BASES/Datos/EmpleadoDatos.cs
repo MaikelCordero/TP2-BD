@@ -23,7 +23,8 @@ namespace TAREAPROGRAMADA1BASES.Datos
                         oLista.Add(new EmpleadoModel() { 
                             id = Convert.ToInt32(dr["id"]),
                             Nombre = dr["Nombre"].ToString(),
-                            Salario = dr["Salario"].ToString(),
+                            IDENTIDAD = dr["Documento de identidad"].ToString(),
+                            IdPuesto = dr["ID del Puesto"].ToString(),
                         });
                     }
                 }
@@ -50,7 +51,7 @@ namespace TAREAPROGRAMADA1BASES.Datos
                     {
                         oEmpleado.id = Convert.ToInt32(dr["id"]);
                         oEmpleado.Nombre = dr["Nombre"].ToString();
-                        oEmpleado.Salario = dr["Salario"].ToString();
+                        oEmpleado.IDENTIDAD = dr["Salario"].ToString();
                         
                     }
                 }
@@ -69,9 +70,10 @@ namespace TAREAPROGRAMADA1BASES.Datos
                 using (var conexion = new SqlConnection(cn.getCadenaSQL()))
                 {
                     conexion.Open();
-                    SqlCommand cmd = new SqlCommand("sp_Guardar", conexion);
+                    SqlCommand cmd = new SqlCommand("sp_Guardarr", conexion);
                     cmd.Parameters.AddWithValue("@Nombre", oempleado.Nombre);
-                    cmd.Parameters.AddWithValue("@Salario", oempleado.Salario);
+                    cmd.Parameters.AddWithValue("@IDENTIDAD", oempleado.IDENTIDAD);
+                    cmd.Parameters.AddWithValue("@IdPuesto", oempleado.IdPuesto);
                     cmd.CommandType = CommandType.StoredProcedure;
                     cmd.ExecuteNonQuery();
                 }
@@ -101,7 +103,7 @@ namespace TAREAPROGRAMADA1BASES.Datos
                     SqlCommand cmd = new SqlCommand("sp_Editar", conexion);
                     cmd.Parameters.AddWithValue("id", oempleado.id);
                     cmd.Parameters.AddWithValue("Nombre", oempleado.Nombre);
-                    cmd.Parameters.AddWithValue("Salario", oempleado.Salario);
+                    cmd.Parameters.AddWithValue("Salario", oempleado.IDENTIDAD);
                     cmd.CommandType = CommandType.StoredProcedure;
                     cmd.ExecuteNonQuery();
                 }
@@ -152,6 +154,35 @@ namespace TAREAPROGRAMADA1BASES.Datos
 
             return rpta;
 
+        }
+        // Método para verificar si ya existe un nombre registrado
+        public bool ExisteNombre(string nombre)
+        {
+            var cn = new Conexion();
+            using (var connection = new SqlConnection(cn.getCadenaSQL()))
+            {
+                string query = "SELECT COUNT(1) FROM dbo.Empleadoo WHERE Nombre = @Nombre";
+                SqlCommand command = new SqlCommand(query, connection);
+                command.Parameters.AddWithValue("@Nombre", nombre);
+                connection.Open();
+                int count = (int)command.ExecuteScalar();
+                return count > 0;
+            }
+        }
+
+        // Método para verificar si ya existe una identidad registrada
+        public bool ExisteIdentidad(string identidad)
+        {
+            var cn = new Conexion();
+            using (var connection = new SqlConnection(cn.getCadenaSQL()))
+            {
+                string query = "SELECT COUNT(1) FROM dbo.Empleadoo WHERE IDENTIDAD = @Identidad";
+                SqlCommand command = new SqlCommand(query, connection);
+                command.Parameters.AddWithValue("@Identidad", identidad);
+                connection.Open();
+                int count = (int)command.ExecuteScalar();
+                return count > 0;
+            }
         }
 
     }
