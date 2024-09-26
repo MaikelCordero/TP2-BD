@@ -66,7 +66,55 @@ namespace TAREAPROGRAMADA1BASES.Controllers
             return View();
         }
 
+        public IActionResult Editar(int id)
+        {
+            var oEmpleado = _EmpleadoDatos.Obtener(id);
+            return View(oEmpleado);
+        }
 
+
+        [HttpPost]
+        public IActionResult Editar(EmpleadoModel oEmpleado)
+        {
+            if (!ModelState.IsValid)
+                return View();
+
+            var respuesta = _EmpleadoDatos.Editar(oEmpleado);
+
+            if (respuesta)
+                return RedirectToAction("Listar");
+            else
+                return View();
+
+        }
+
+        public IActionResult Eliminar(int id)
+        {
+            var oEmpleado = _EmpleadoDatos.Obtener(id);
+            return View(oEmpleado);
+        }
+
+
+        [HttpPost]
+        public IActionResult Eliminar(EmpleadoModel oEmpleado)
+        {
+            
+            var respuesta = _EmpleadoDatos.Eliminar(oEmpleado.Id);
+
+            if (respuesta)
+                return RedirectToAction("Listar");
+            else
+                return View();
+
+        }
+
+        public IActionResult Filtrar(string filtroEmpleado)
+        {
+
+            
+            return View();
+
+        }
 
     }
 }

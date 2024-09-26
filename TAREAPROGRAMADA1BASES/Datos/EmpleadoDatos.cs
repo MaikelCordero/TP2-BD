@@ -16,15 +16,15 @@ namespace TAREAPROGRAMADA1BASES.Datos
 
             using (var conexion = new SqlConnection(cn.getCadenaSQL())) { 
                 conexion.Open();
-                SqlCommand cmd = new SqlCommand("sp_listar",conexion);
+                SqlCommand cmd = new SqlCommand("sp_listarr",conexion);
                 cmd.CommandType = CommandType.StoredProcedure;
                 using (var dr = cmd.ExecuteReader()) {
                     while (dr.Read()) {
                         oLista.Add(new EmpleadoModel() { 
-                            id = Convert.ToInt32(dr["id"]),
+                            Id = Convert.ToInt32(dr["id"]),
                             Nombre = dr["Nombre"].ToString(),
-                            IDENTIDAD = dr["Documento de identidad"].ToString(),
-                            IdPuesto = dr["ID del Puesto"].ToString(),
+                            IDENTIDAD = dr["IDENTIDAD"].ToString(),
+                            IdPuesto = dr["IdPuesto"].ToString(),
                         });
                     }
                 }
@@ -42,17 +42,18 @@ namespace TAREAPROGRAMADA1BASES.Datos
             using (var conexion = new SqlConnection(cn.getCadenaSQL()))
             {
                 conexion.Open();
-                SqlCommand cmd = new SqlCommand("sp_Obtener", conexion);
-                cmd.Parameters.AddWithValue("id", Id);
+                SqlCommand cmd = new SqlCommand("sp_Obtenerr", conexion);
+                cmd.Parameters.AddWithValue("Id", Id);
                 cmd.CommandType = CommandType.StoredProcedure;
                 using (var dr = cmd.ExecuteReader())
                 {
                     while (dr.Read())
                     {
-                        oEmpleado.id = Convert.ToInt32(dr["id"]);
+                        oEmpleado.Id = Convert.ToInt32(dr["Id"]);
                         oEmpleado.Nombre = dr["Nombre"].ToString();
-                        oEmpleado.IDENTIDAD = dr["Salario"].ToString();
-                        
+                        oEmpleado.IDENTIDAD = dr["IDENTIDAD"].ToString();
+                        oEmpleado.IdPuesto = dr["IdPuesto"].ToString();
+
                     }
                 }
             }
@@ -100,10 +101,11 @@ namespace TAREAPROGRAMADA1BASES.Datos
                 using (var conexion = new SqlConnection(cn.getCadenaSQL()))
                 {
                     conexion.Open();
-                    SqlCommand cmd = new SqlCommand("sp_Editar", conexion);
-                    cmd.Parameters.AddWithValue("id", oempleado.id);
+                    SqlCommand cmd = new SqlCommand("sp_Editarr", conexion);
+                    cmd.Parameters.AddWithValue("id", oempleado.Id);
                     cmd.Parameters.AddWithValue("Nombre", oempleado.Nombre);
-                    cmd.Parameters.AddWithValue("Salario", oempleado.IDENTIDAD);
+                    cmd.Parameters.AddWithValue("IDENTIDAD", oempleado.IDENTIDAD);
+                    cmd.Parameters.AddWithValue("IdPuesto", oempleado.IdPuesto);
                     cmd.CommandType = CommandType.StoredProcedure;
                     cmd.ExecuteNonQuery();
                 }
@@ -135,7 +137,7 @@ namespace TAREAPROGRAMADA1BASES.Datos
                 using (var conexion = new SqlConnection(cn.getCadenaSQL()))
                 {
                     conexion.Open();
-                    SqlCommand cmd = new SqlCommand("sp_Eliminar", conexion);
+                    SqlCommand cmd = new SqlCommand("sp_Eliminarr", conexion);
                     cmd.Parameters.AddWithValue("id", id);
                     cmd.CommandType = CommandType.StoredProcedure;
                     cmd.ExecuteNonQuery();

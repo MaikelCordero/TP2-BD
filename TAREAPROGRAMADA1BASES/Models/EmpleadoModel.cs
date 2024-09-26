@@ -5,7 +5,7 @@ namespace TAREAPROGRAMADA1BASES.Models
     public class EmpleadoModel
     {
         [Required(ErrorMessage ="El id es requerido")]
-        public int id { get; set; }
+        public int Id { get; set; }
 
         [Required(ErrorMessage = "La identidad o cédula es requerida para guardar el empleado")]
         [RegularExpression("^[0-9]*$", ErrorMessage = "El documento de identidad solo debe contener números")]
