@@ -1,7 +1,7 @@
-USE [PROYECT2JF]
+USE [sistemaEmpleadosTP2]
 GO
 
-/****** Object:  StoredProcedure [dbo].[consultEmpleado]    Script Date: 22/4/2024 22:58:30 ******/
+/****** Object:  StoredProcedure [dbo].[consultEmpleado] ******/
 SET ANSI_NULLS ON
 GO
 
@@ -9,82 +9,105 @@ SET QUOTED_IDENTIFIER ON
 GO
 
 CREATE PROCEDURE [dbo].[consultEmpleado]
-	@InvalorDocIdent int,
-	@InNamePostbyUser nvarchar(50),
-	@InPostInIP nvarchar(50),
-	@OutResult int OUTPUT
+    @InvalorDocIdent int,
+    @InNamePostbyUser nvarchar(50),
+    @InPostInIP nvarchar(50),
+    @OutResultCode int OUTPUT
 AS
 BEGIN
+    SET NOCOUNT ON;
 
-SET NOCOUNT ON;
+    BEGIN TRY
+        DECLARE @descripcion NVARCHAR(2000);
+        DECLARE @id_usuario INT;
+        DECLARE @nombre_empleado NVARCHAR(50);
 
-BEGIN TRY
-	DECLARE @Descripcion NVARCHAR(2000);
-	DECLARE @IdUser INT;
-	DECLARE @Nombre NVARCHAR(50);
+        -- Inicialización del parámetro de salida
+        SET @OutResultCode = 0;
 
-	SET @OutResult = 0;
-	SELECT @IdUser = Id FROM Usuario WHERE UserName = @InNamePostbyUser;
+        -- Obtiene el ID del usuario que realiza la consulta
+        SELECT @id_usuario = u.Id
+		FROM [sistemaEmpleadosTP2].[dbo].[Usuario] u
+		WHERE u.UserName = @InNamePostbyUser;
 
-	IF EXISTS (SELECT 1 FROM Empleado WHERE ValorDocumentoIdentidad = @InvalorDocIdent)
-	BEGIN
-		BEGIN TRANSACTION
-			SELECT @Nombre = Nombre FROM Empleado WHERE ValorDocumentoIdentidad = @InvalorDocIdent;
+        -- Verifica si el empleado existe
+        IF EXISTS (SELECT 1
+		FROM [sistemaEmpleadosTP2].[dbo].[Empleado] e
+		WHERE e.ValorDocumentoIdentidad = @InvalorDocIdent)
 
-			SET @Descripcion = 'Consulta del empleado, '+
-						CONVERT(VARCHAR(100), @InvalorDocIdent) + ', ' +
-						@Nombre;
-            --consulta    
-			SELECT 
-				E.ValorDocumentoIdentidad,
-				E.Nombre,
-				P.Nombre 'Puesto',
-				E.SaldoVacaciones
-			FROM Empleado E
-				inner join Puesto P on P.Id = E.IdPuesto
-			WHERE 
-				E.ValorDocumentoIdentidad = @InvalorDocIdent
+        BEGIN
+        BEGIN TRANSACTION
 
-			--trazabilidad
-			INSERT INTO dbo.BitacoraEvento (idTipoEvento, Descripcion, IdPostByUser, PostInIP, PostTime)
-			VALUES (11, @Descripcion, @IdUser, @InPostInIP, GETDATE());
-		COMMIT TRANSACTION 
-	END;
+        -- Obtiene el nombre del empleado
+        SELECT @nombre_empleado = e.Nombre
+        FROM [sistemaEmpleadosTP2].[dbo].[Empleado] e
+        WHERE e.ValorDocumentoIdentidad = @InvalorDocIdent;
 
-	ELSE
-	BEGIN
-		SET @OutResult = 50012;
+        -- Construye la descripción del evento
+        SET @descripcion = 'Consulta del empleado, ' +
+                                   CONVERT(VARCHAR(100), @InvalorDocIdent) + ', ' +
+                                   @nombre_empleado;
 
-		--trazabilidad
-		INSERT INTO dbo.BitacoraEvento (idTipoEvento, Descripcion, IdPostByUser, PostInIP, PostTime)
-		VALUES (11, 'Se intento consultar el empleado, ' + CONVERT(VARCHAR(100), @InvalorDocIdent), @IdUser, @InPostInIP, GETDATE());
+        -- Realiza la consulta del empleado
+        SELECT
+            e.ValorDocumentoIdentidad,
+            e.Nombre,
+            p.Nombre AS Puesto,
+            e.SaldoVacaciones
+        FROM [sistemaEmpleadosTP2].[dbo].[Empleado] e
+            INNER JOIN [sistemaEmpleadosTP2].[dbo].[Puesto] p ON p.Id = e.IdPuesto
+        WHERE e.ValorDocumentoIdentidad = @InvalorDocIdent;
 
-		PRINT 'No existe el empleado.';
-	END;
-END TRY
+        -- Inserta registro en la bitácora
+        INSERT INTO [sistemaEmpleadosTP2].[dbo].[BitacoraEvento]
+            (idTipoEvento, Descripcion, IdPostByUser, PostInIP, PostTime)
+        VALUES
+            (11, @descripcion, @id_usuario, @InPostInIP, GETDATE());
 
-BEGIN CATCH
+        COMMIT TRANSACTION
+    END
+        ELSE
+        BEGIN
+        -- Si no existe el empleado, actualiza el resultado y registra el evento
+        SET @OutResultCode = 50012;
 
-	IF @@TRANCOUNT>0 
-	BEGIN
-		ROLLBACK TRANSACTION;
-	END;
-	
-	INSERT INTO dbo.DBError (DBError.ErrorUsername, DBError.ErrorNumber, ErrorState, ErrorSeverity, ErrorLine, ErrorProcedure, ErrorMessage, ErrorDateTime)
-	VALUES (SUSER_NAME(), ERROR_NUMBER(), ERROR_STATE(), ERROR_SEVERITY(), ERROR_LINE(), ERROR_PROCEDURE(), ERROR_MESSAGE(), GETDATE());
-	
-	
-	SET @OutResult = 50008;   -- error en BD
+        INSERT INTO [sistemaEmpleadosTP2].[dbo].[BitacoraEvento]
+            (idTipoEvento, Descripcion, IdPostByUser, PostInIP, PostTime)
+        VALUES
+            (11, 'Intento de consulta del empleado, ' + 
+                CONVERT(VARCHAR(100), @InvalorDocIdent), @id_usuario, @InPostInIP, GETDATE());
 
-END CATCH
-SET NOCOUNT OFF;
+        PRINT 'No existe el empleado.';
+    END;
+    END TRY
+
+    BEGIN CATCH
+        -- Manejo de errores, si ocurre un error se revierte la transacción
+        IF @@TRANCOUNT > 0 
+        BEGIN
+        ROLLBACK TRANSACTION;
+    END;
+
+        -- Inserta el error en la tabla de errores de la base de datos
+        INSERT INTO [sistemaEmpleadosTP2].[dbo].[DBError]
+        (ErrorUsername, ErrorNumber, ErrorState, ErrorSeverity, ErrorLine,
+        ErrorProcedure, ErrorMessage, ErrorDateTime)
+		VALUES
+        (SUSER_NAME(), ERROR_NUMBER(), ERROR_STATE(), ERROR_SEVERITY(),
+            ERROR_LINE(), ERROR_PROCEDURE(), ERROR_MESSAGE(), GETDATE());
+
+        -- Actualiza el parámetro de salida con un código de error
+        SET @OutResultCode = 50008; -- Error en la base de datos
+    END CATCH
+
+    SET NOCOUNT OFF;
 END;
 GO
 
-USE [PROYECT2JF]
+USE [sistemaEmpleadosTP2]
 GO
 
-/****** Object:  StoredProcedure [dbo].[consultMovim]    Script Date: 22/4/2024 22:58:43 ******/
+/****** Object:  StoredProcedure [dbo].[consultMovim] ******/
 SET ANSI_NULLS ON
 GO
 
@@ -92,89 +115,109 @@ SET QUOTED_IDENTIFIER ON
 GO
 
 CREATE PROCEDURE [dbo].[consultMovim]
-@InvalorDocIdent int,
-@InNamePostbyUser nvarchar(50),
-@InPostInIP nvarchar(50),
-@OutResult int OUTPUT
-
+    @InvalorDocIdent INT,
+    @InNamePostbyUser NVARCHAR(50),
+    @InPostInIP NVARCHAR(50),
+    @OutResultCode INT OUTPUT
 AS
 BEGIN
+    SET NOCOUNT ON;
 
-SET NOCOUNT ON;
+    BEGIN TRY
+        DECLARE @Descripcion NVARCHAR(2000);
+        DECLARE @IdUser INT;
+        DECLARE @Nombre NVARCHAR(50);
 
-BEGIN TRY
-	DECLARE @Descripcion NVARCHAR(2000);
-	DECLARE @IdUser INT;
-	DECLARE @Nombre NVARCHAR(50);
+        -- Inicialización del parámetro de salida
+        SET @OutResultCode = 0;
 
-	SET @OutResult = 0;
-	SELECT @IdUser = Id FROM Usuario WHERE UserName = @InNamePostbyUser;
+        -- Obtiene el ID del usuario que realiza la consulta
+        SELECT @IdUser = u.Id
+		FROM [sistemaEmpleadosTP2].[dbo].[Usuario] u
+		WHERE u.UserName = @InNamePostbyUser;
 
-	IF EXISTS (SELECT 1 FROM Empleado WHERE ValorDocumentoIdentidad = @InvalorDocIdent)
-	BEGIN
-		BEGIN TRANSACTION
-			SELECT @Nombre = Nombre FROM Empleado WHERE ValorDocumentoIdentidad = @InvalorDocIdent;
+        -- Verifica si el empleado existe
+        IF EXISTS (SELECT 1
+		FROM [sistemaEmpleadosTP2].[dbo].[Empleado] e
+		WHERE e.ValorDocumentoIdentidad = @InvalorDocIdent)
+        BEGIN
+        BEGIN TRANSACTION
 
-			SET @Descripcion = 'Consulta moviminetos del empleado, '+
-						CONVERT(VARCHAR(100), @InvalorDocIdent) + ', ' +
-						@Nombre;
-			--consulta
-			SELECT 
-				M.Fecha,
-				T.Nombre,
-				M.Monto,
-				M.NuevoSaldo,
-				M.IdPostByUser,
-				M.PostInIP,
-				M.PostTime
-			FROM Movimiento M
-				inner join TipoMovimiento T on M.IdTipoMovimiento = T.Id 
-				inner join Empleado E on M.IdEmpleado = E.ValorDocumentoIdentidad
-			WHERE 
-				M.IdEmpleado = @InvalorDocIdent
-			ORDER BY M.Fecha DESC
+        -- Obtiene el nombre del empleado
+        SELECT @Nombre = e.Nombre
+        FROM [sistemaEmpleadosTP2].[dbo].[Empleado] e
+        WHERE e.ValorDocumentoIdentidad = @InvalorDocIdent;
 
-			--trazabilidad
-			INSERT INTO dbo.BitacoraEvento (idTipoEvento, Descripcion, IdPostByUser, PostInIP, PostTime)
-			VALUES (11, @Descripcion, @IdUser, @InPostInIP, GETDATE());
+        -- Construye la descripción del evento
+        SET @Descripcion = 'Consulta movimientos del empleado, ' + 
+                                   CONVERT(VARCHAR(100), @InvalorDocIdent) + ', ' + 
+                                   @Nombre;
 
-		COMMIT TRANSACTION 
-	END;
+        -- Realiza la consulta de movimientos del empleado
+        SELECT
+            m.Fecha,
+            t.Nombre,
+            m.Monto,
+            m.NuevoSaldo,
+            m.IdPostByUser,
+            m.PostInIP,
+            m.PostTime
+        FROM [sistemaEmpleadosTP2].[dbo].[Movimiento] m
+            INNER JOIN [sistemaEmpleadosTP2].[dbo].[TipoMovimiento] t ON m.IdTipoMovimiento = t.Id
+            INNER JOIN [sistemaEmpleadosTP2].[dbo].[Empleado] e ON m.IdEmpleado = e.ValorDocumentoIdentidad
+        WHERE m.IdEmpleado = @InvalorDocIdent
+        ORDER BY m.Fecha DESC;
 
-	ELSE
-	BEGIN
-		SET @OutResult = 50012;
+        -- Inserta registro en la bitácora
+        INSERT INTO [sistemaEmpleadosTP2].[dbo].[BitacoraEvento]
+            (idTipoEvento, Descripcion, IdPostByUser, PostInIP, PostTime)
+        VALUES
+            (11, @Descripcion, @IdUser, @InPostInIP, GETDATE());
 
-		--trazabilidad
-		INSERT INTO dbo.BitacoraEvento (idTipoEvento, Descripcion, IdPostByUser, PostInIP, PostTime)
-		VALUES (15, 'Se intento consultar los moviminetos del empleado, ' + CONVERT(VARCHAR(100), @InvalorDocIdent), @IdUser, @InPostInIP, GETDATE());
+        COMMIT TRANSACTION
+    END
+        ELSE
+        BEGIN
+        -- Si no existe el empleado, actualiza el resultado y registra el evento
+        SET @OutResultCode = 50012;
 
-		PRINT 'No existe el empleado.';
-	END;
-END TRY
+        INSERT INTO [sistemaEmpleadosTP2].[dbo].[BitacoraEvento]
+            (idTipoEvento, Descripcion, IdPostByUser, PostInIP, PostTime)
+        VALUES
+            (15, 'Intento de consulta de movimientos del empleado, ' + 
+                CONVERT(VARCHAR(100), @InvalorDocIdent), @IdUser, @InPostInIP, GETDATE());
 
-BEGIN CATCH
+        PRINT 'No existe el empleado.';
+    END;
+    END TRY
 
-	IF @@TRANCOUNT>0 
-	BEGIN
-		ROLLBACK TRANSACTION;
-	END;
-	
-	INSERT INTO dbo.DBError (DBError.ErrorUsername, DBError.ErrorNumber, ErrorState, ErrorSeverity, ErrorLine, ErrorProcedure, ErrorMessage, ErrorDateTime)
-	VALUES (SUSER_NAME(), ERROR_NUMBER(), ERROR_STATE(), ERROR_SEVERITY(), ERROR_LINE(), ERROR_PROCEDURE(), ERROR_MESSAGE(), GETDATE());
-	
-	
-	SET @OutResult = 50008;   -- error en BD
+    BEGIN CATCH
+        -- Manejo de errores, si ocurre un error se revierte la transacción
+        IF @@TRANCOUNT > 0 
+        BEGIN
+        ROLLBACK TRANSACTION;
+    END;
 
-END CATCH
-SET NOCOUNT OFF;
+        -- Inserta el error en la tabla de errores de la base de datos
+        INSERT INTO [sistemaEmpleadosTP2].[dbo].[DBError]
+        (ErrorUsername, ErrorNumber, ErrorState, ErrorSeverity, ErrorLine,
+        ErrorProcedure, ErrorMessage, ErrorDateTime)
+		VALUES
+        (SUSER_NAME(), ERROR_NUMBER(), ERROR_STATE(), ERROR_SEVERITY(),
+            ERROR_LINE(), ERROR_PROCEDURE(), ERROR_MESSAGE(), GETDATE());
+
+        -- Actualiza el parámetro de salida con un código de error
+        SET @OutResultCode = 50008; -- Error en la base de datos
+    END CATCH
+
+    SET NOCOUNT OFF;
 END;
 GO
 
-USE [PROYECT2JF]
+USE [sistemaEmpleadosTP2]
 GO
 
-/****** Object:  StoredProcedure [dbo].[deletEmpleado]    Script Date: 22/4/2024 22:58:57 ******/
+/****** Object:  StoredProcedure [dbo].[deletEmpleado] ******/
 SET ANSI_NULLS ON
 GO
 
@@ -182,87 +225,117 @@ SET QUOTED_IDENTIFIER ON
 GO
 
 CREATE PROCEDURE [dbo].[deletEmpleado]
-	@InvalorDocIdent int,
-	@InNamePostbyUser nvarchar(50),
-	@InPostInIP nvarchar(50),
-	@OutResult int OUTPUT
+    @InvalorDocIdent INT,
+    @InNamePostbyUser NVARCHAR(50),
+    @InPostInIP NVARCHAR(50),
+    @OutResultCode INT OUTPUT
 AS
 BEGIN
+    SET NOCOUNT ON;
 
-SET NOCOUNT ON;
+    BEGIN TRY
+        DECLARE @Descripcion NVARCHAR(2000);
+        DECLARE @IdUser INT;
+        DECLARE @Nombre NVARCHAR(50);
+        DECLARE @IdPuesto INT;
+        DECLARE @NombrePuesto NVARCHAR(50);
+        DECLARE @SaldoVac INT;
 
-BEGIN TRY
-	DECLARE @Descripcion NVARCHAR(2000);
-	DECLARE @IdUser INT;
-	DECLARE @Nombre NVARCHAR(50);
-	DECLARE @IdPuesto INT;
-	DECLARE @NombrePuesto NVARCHAR(50);
-	DECLARE @SaldoVac INT;
+        -- Inicialización del parámetro de salida
+        SET @OutResultCode = 0;
 
-	SET @OutResult = 0;
-	SELECT @IdUser = Id FROM Usuario WHERE UserName = @InNamePostbyUser;
+        -- Obtiene el ID del usuario que realiza la eliminación
+        SELECT @IdUser = u.Id
+		FROM [sistemaEmpleadosTP2].[dbo].[Usuario] u
+		WHERE u.UserName = @InNamePostbyUser;
 
-	IF EXISTS (SELECT 1 FROM Empleado WHERE ValorDocumentoIdentidad = @InvalorDocIdent AND (SELECT Activo FROM Empleado WHERE ValorDocumentoIdentidad = @InvalorDocIdent) = 1)
-	BEGIN
-		BEGIN TRANSACTION
-			SELECT @Nombre = Nombre FROM Empleado WHERE ValorDocumentoIdentidad = @InvalorDocIdent;
-			SELECT @IdPuesto = IdPuesto FROM Empleado WHERE ValorDocumentoIdentidad = @InvalorDocIdent;
-			SELECT @NombrePuesto = Nombre FROM Puesto WHERE Id = @IdPuesto;
-			SELECT @SaldoVac = SaldoVacaciones FROM Empleado WHERE ValorDocumentoIdentidad = @InvalorDocIdent;
+        -- Verifica si el empleado existe y está activo
+        IF EXISTS (SELECT 1
+		FROM [sistemaEmpleadosTP2].[dbo].[Empleado] e
+		WHERE e.ValorDocumentoIdentidad = @InvalorDocIdent
+        AND e.Activo = 1)
+        BEGIN
+        BEGIN TRANSACTION
+        -- Obtiene los detalles del empleado
+        SELECT
+            @Nombre = e.Nombre,
+            @IdPuesto = e.IdPuesto,
+            @SaldoVac = e.SaldoVacaciones
+        FROM [sistemaEmpleadosTP2].[dbo].[Empleado] e
+        WHERE e.ValorDocumentoIdentidad = @InvalorDocIdent;
 
-			SET @Descripcion = CONVERT(VARCHAR(100), @InvalorDocIdent) + ', ' +
-					  @Nombre + ', ' +
-					  @NombrePuesto + ', ' + 
-					  CONVERT(VARCHAR(100), @SaldoVac);
-                
+        -- Obtiene el nombre del puesto del empleado
+        SELECT @NombrePuesto = p.Nombre
+        FROM [sistemaEmpleadosTP2].[dbo].[Puesto] p
+        WHERE p.Id = @IdPuesto;
 
-			--update
-			UPDATE  Empleado 
-			SET 
-				Activo = 0
-			WHERE 
-				ValorDocumentoIdentidad = @InvalorDocIdent
+        -- Construye la descripción del evento de eliminación
+        SET @Descripcion = CONVERT(VARCHAR(100), @InvalorDocIdent) + ', ' + 
+                                   @Nombre + ', ' + 
+                                   @NombrePuesto + ', ' + 
+                                   CONVERT(VARCHAR(100), @SaldoVac);
 
-			--trazabilidad
-			INSERT INTO dbo.BitacoraEvento (idTipoEvento, Descripcion, IdPostByUser, PostInIP, PostTime)
-			VALUES (10, @Descripcion, @IdUser, @InPostInIP, GETDATE());
-		COMMIT TRANSACTION 
-	END;
+        -- Desactiva el empleado
+        UPDATE Empleado 
+                SET Activo = 0 
+                WHERE ValorDocumentoIdentidad = @InvalorDocIdent;
 
-	ELSE
-	BEGIN
-		SET @OutResult = 50012;
+        -- Inserta un registro en la bitácora
+        INSERT INTO [sistemaEmpleadosTP2].[dbo].[BitacoraEvento]
+            (idTipoEvento, Descripcion, IdPostByUser, PostInIP, PostTime)
+        VALUES
+            (10, @Descripcion, @IdUser, @InPostInIP, GETDATE());
 
-		--trazabilidad
-		INSERT INTO dbo.BitacoraEvento (idTipoEvento, Descripcion, IdPostByUser, PostInIP, PostTime)
-		VALUES (9, CONVERT(NVARCHAR(100),@InvalorDocIdent), @IdUser, @InPostInIP,GETDATE());
+        COMMIT TRANSACTION
+    END
+        ELSE
+        BEGIN
+        -- Si el empleado no existe o ya fue eliminado, actualiza el resultado
+        SET @OutResultCode = 50012;
 
-		PRINT 'No existe el empleado o ya fue eliminado.';
-	END;
-END TRY
+        -- Construye la descripción del evento de eliminación
+        SET @Descripcion = CONVERT(VARCHAR(100), @InvalorDocIdent) + ', ' + 
+                                   @Nombre + ', ' + 
+                                   @NombrePuesto + ', ' + 
+                                   CONVERT(VARCHAR(100), @SaldoVac);
 
-BEGIN CATCH
+        -- Inserta registro en la bitácora
+        INSERT INTO [sistemaEmpleadosTP2].[dbo].[BitacoraEvento]
+            (idTipoEvento, Descripcion, IdPostByUser, PostInIP, PostTime)
+        VALUES
+            (9, @Descripcion, @IdUser, @InPostInIP, GETDATE());
 
-	IF @@TRANCOUNT>0 
-	BEGIN
-		ROLLBACK TRANSACTION;
-	END;
-	
-	INSERT INTO dbo.DBError (DBError.ErrorUsername, DBError.ErrorNumber, ErrorState, ErrorSeverity, ErrorLine, ErrorProcedure, ErrorMessage, ErrorDateTime)
-	VALUES (SUSER_NAME(), ERROR_NUMBER(), ERROR_STATE(), ERROR_SEVERITY(), ERROR_LINE(), ERROR_PROCEDURE(), ERROR_MESSAGE(), GETDATE());
-	
-	
-	SET @OutResult = 50008;   -- error en BD
+        PRINT 'No existe el empleado o ya fue eliminado.';
+    END;
+    END TRY
 
-END CATCH
-SET NOCOUNT OFF;
+    BEGIN CATCH
+        -- Manejo de errores: si ocurre un error, revierte la transacción
+        IF @@TRANCOUNT > 0 
+        BEGIN
+        ROLLBACK TRANSACTION;
+    END;
+
+        -- Inserta el error en la tabla de errores de la base de datos
+        INSERT INTO [sistemaEmpleadosTP2].[dbo].[DBError]
+        (ErrorUsername, ErrorNumber, ErrorState, ErrorSeverity, ErrorLine,
+        ErrorProcedure, ErrorMessage, ErrorDateTime)
+    VALUES
+        (SUSER_NAME(), ERROR_NUMBER(), ERROR_STATE(), ERROR_SEVERITY(),
+            ERROR_LINE(), ERROR_PROCEDURE(), ERROR_MESSAGE(), GETDATE());
+
+        -- Actualiza el parámetro de salida con un código de error
+        SET @OutResultCode = 50008; -- Error en la base de datos
+    END CATCH
+
+    SET NOCOUNT OFF;
 END;
 GO
 
-USE [PROYECT2JF]
+USE [sistemaEmpleadosTP2]
 GO
 
-/****** Object:  StoredProcedure [dbo].[insertEmpleado]    Script Date: 22/4/2024 22:59:22 ******/
+/****** Object:  StoredProcedure [dbo].[insertEmpleado] ******/
 SET ANSI_NULLS ON
 GO
 
@@ -270,93 +343,139 @@ SET QUOTED_IDENTIFIER ON
 GO
 
 CREATE PROCEDURE [dbo].[insertEmpleado]
-    @IndocumIdentidad int,
-	@Innombre nvarchar(50),
-	@InIdPuesto int,
-	@InNamePostbyUser nvarchar(50),
-	@InPostInIP nvarchar(50),
-	@OutResult int OUTPUT
+    @IndocumIdentidad INT,
+    @Innombre NVARCHAR(50),
+    @InIdPuesto INT,
+    @InNamePostbyUser NVARCHAR(50),
+    @InPostInIP NVARCHAR(50),
+    @OutResultCode INT OUTPUT
 AS
 BEGIN
-	
-SET NOCOUNT ON;
+    SET NOCOUNT ON;
 
-BEGIN TRY
+    BEGIN TRY
+        DECLARE @Descripcion NVARCHAR(150);
+        DECLARE @IdUser INT;
+        DECLARE @PuestoNombre NVARCHAR(50);
 
-	DECLARE @Descripcion nvarchar(150);
-	DECLARE @IdUser int;
+        -- Inicializa el parámetro de salida
+        SET @OutResultCode = 0;
 
-	SET @OutResult = 0;
-	SELECT @IdUser = Id FROM Usuario WHERE UserName = @InNamePostbyUser;
+        -- Obtiene el ID del usuario que realiza la inserción
+        SELECT @IdUser = u.Id
+		FROM [sistemaEmpleadosTP2].[dbo].[Usuario] u
+		WHERE u.UserName = @InNamePostbyUser;
 
-	
-	IF EXISTS (SELECT 1 FROM Empleado WHERE ValorDocumentoIdentidad = @IndocumIdentidad)
-	BEGIN
-		SET @OutResult = 50004;
-		SELECT @Descripcion = Descripcion FROM Error WHERE Codigo = @OutResult;
+        -- Verifica si ya existe un empleado con el mismo documento de identidad
+        IF EXISTS (SELECT 1
+		FROM [sistemaEmpleadosTP2].[dbo].[Empleado] e
+		WHERE e.ValorDocumentoIdentidad = @IndocumIdentidad)
 
-		--trazabilidad
-		INSERT INTO dbo.BitacoraEvento (idTipoEvento, Descripcion, IdPostByUser, PostInIP, PostTime)
-		VALUES (5, CONVERT(NVARCHAR(250),@Descripcion + ', ' + CONVERT(NVARCHAR(50), @IndocumIdentidad) + ', ' + @Innombre + ', ' + (SELECT nombre FROM Puesto WHERE Puesto.Id = @InIdPuesto)), @IdUser, @InPostInIP, GETDATE());
+        BEGIN
+        SET @OutResultCode = 50004;
 
+        -- Obtiene la descripción del error
+        SELECT @Descripcion = err.Descripcion
+        FROM [sistemaEmpleadosTP2].[dbo].[Error] err
+        WHERE err.Codigo = @OutResultCode;
 
-		PRINT 'El valorDocumentoIdentidad ya existe en la base de datos.';
-		RETURN;
-	END;
+        -- Inserta un registro en la bitácora
+        INSERT INTO [sistemaEmpleadosTP2].[dbo].[BitacoraEvento]
+            (idTipoEvento, Descripcion, IdPostByUser, PostInIP, PostTime)
+        VALUES
+			(5,
+            @Descripcion + ', ' + 
+            CONVERT(NVARCHAR(50), @IndocumIdentidad) + ', ' + 
+            @Innombre + ', ' + 
+            (SELECT p.Nombre
+            FROM Puesto p
+            WHERE p.Id = @InIdPuesto),
+            @IdUser, @InPostInIP, GETDATE());
 
-	ELSE IF EXISTS (SELECT 1 FROM Empleado WHERE Nombre = @Innombre)
-	BEGIN
-		SET @OutResult = 50005;
-		SELECT @Descripcion = Descripcion FROM Error WHERE Codigo = @OutResult;
+        PRINT 'El valorDocumentoIdentidad ya existe en la base de datos.';
+        RETURN;
+    END;
 
-		--trazabilidad
-		INSERT INTO dbo.BitacoraEvento (idTipoEvento, Descripcion, IdPostByUser, PostInIP, PostTime)
-		VALUES (5, CONVERT(NVARCHAR(250),@Descripcion + ', ' + CONVERT(NVARCHAR(50), @IndocumIdentidad) + ', ' + @Innombre + ', ' + (SELECT nombre FROM Puesto WHERE Puesto.Id = @InIdPuesto)), @IdUser, @InPostInIP,GETDATE());
+        -- Verifica si ya existe un empleado con el mismo nombre
+        IF EXISTS (SELECT 1
+		FROM [sistemaEmpleadosTP2].[dbo].[Empleado] e
+		WHERE e.Nombre = @Innombre)
+        BEGIN
+        SET @OutResultCode = 50005;
 
-		PRINT 'El nombre del empleado ya existe en la base de datos.';
-		RETURN;
-	END;
+        -- Obtiene la descripción del error
+        SELECT @Descripcion = err.Descripcion
+        FROM [sistemaEmpleadosTP2].[dbo].[Error] err
+        WHERE err.Codigo = @OutResultCode;
 
-	ELSE
-	BEGIN
-		BEGIN TRANSACTION 
-			--incersion
-			INSERT 
-			INTO 
-				Empleado (IdPuesto, ValorDocumentoIdentidad, Nombre, FechaContratacion, SaldoVacaciones, Activo) 
-			VALUES 
-				(@InIdPuesto, @IndocumIdentidad, @Innombre, GETDATE(), 0, 1); 
+        -- Inserta un registro en la bitácora
+        INSERT INTO [sistemaEmpleadosTP2].[dbo].[BitacoraEvento]
+            (idTipoEvento, Descripcion, IdPostByUser, PostInIP, PostTime)
+        VALUES
+            (5,
+                @Descripcion + ', ' + 
+                CONVERT(NVARCHAR(50), @IndocumIdentidad) + ', ' + 
+                @Innombre + ', ' + 
+                (SELECT p.Nombre
+                FROM Puesto p
+                WHERE p.Id = @InIdPuesto),
+                @IdUser, @InPostInIP, GETDATE());
 
-			--trazabilidad
-			INSERT INTO dbo.BitacoraEvento (idTipoEvento, Descripcion, IdPostByUser, PostInIP, PostTime)
-			VALUES (6, (CONVERT(NVARCHAR(250), @IndocumIdentidad) + ', ' + @Innombre + ', ' + (select nombre from Puesto where Puesto.Id = @InIdPuesto)), @IdUser, @InPostInIP, GETDATE());
-		COMMIT TRANSACTION 
-	END;
+        PRINT 'El nombre del empleado ya existe en la base de datos.';
+        RETURN;
+    END;
 
-END TRY
+        ELSE
+        BEGIN
+        -- Inserción del empleado si no existen conflictos
+        BEGIN TRANSACTION
+        -- Inserta el empleado
+        INSERT INTO [sistemaEmpleadosTP2].[dbo].[Empleado]
+            (IdPuesto, ValorDocumentoIdentidad, Nombre, FechaContratacion, SaldoVacaciones, Activo)
+        VALUES
+            (@InIdPuesto, @IndocumIdentidad, @Innombre, GETDATE(), 0, 1);
 
-BEGIN CATCH
+        -- Obtiene el nombre del puesto para la trazabilidad
+        SELECT @PuestoNombre = p.Nombre
+        FROM [sistemaEmpleadosTP2].[dbo].[Puesto] p
+        WHERE p.Id = @InIdPuesto;
 
-	IF @@TRANCOUNT>0 
-	BEGIN
-		ROLLBACK TRANSACTION;
-	END;
-	
-	INSERT INTO dbo.DBError (DBError.ErrorUsername, DBError.ErrorNumber, ErrorState, ErrorSeverity, ErrorLine, ErrorProcedure, ErrorMessage, ErrorDateTime)
-	VALUES (SUSER_NAME(), ERROR_NUMBER(), ERROR_STATE(), ERROR_SEVERITY(), ERROR_LINE(), ERROR_PROCEDURE(), ERROR_MESSAGE(), GETDATE());
-	
-	
-	SET @OutResult = 50008;   -- error en BD
+        -- Inserta un registro en la bitácora
+        INSERT INTO [sistemaEmpleadosTP2].[dbo].[BitacoraEvento]
+            (idTipoEvento, Descripcion, IdPostByUser, PostInIP, PostTime)
+        VALUES
+            (6, CONVERT(NVARCHAR(250), @IndocumIdentidad) + ', ' + @Innombre + ', ' + @PuestoNombre, @IdUser, @InPostInIP, GETDATE());
+        COMMIT TRANSACTION
+    END;
+    END TRY
 
-END CATCH
-SET NOCOUNT OFF;
+    BEGIN CATCH
+        -- Revertir la transacción si ocurre un error
+        IF @@TRANCOUNT > 0 
+        BEGIN
+        ROLLBACK TRANSACTION;
+    END;
+
+        -- Registra el error en la tabla DBError
+        INSERT INTO [sistemaEmpleadosTP2].[dbo].[DBError]
+        (ErrorUsername, ErrorNumber, ErrorState, ErrorSeverity, ErrorLine,
+        ErrorProcedure, ErrorMessage, ErrorDateTime)
+		VALUES
+        (SUSER_NAME(), ERROR_NUMBER(), ERROR_STATE(), ERROR_SEVERITY(),
+            ERROR_LINE(), ERROR_PROCEDURE(), ERROR_MESSAGE(), GETDATE());
+
+        -- Actualiza el resultado de salida en caso de error
+        SET @OutResultCode = 50008; -- Error en la base de datos
+    END CATCH
+
+    SET NOCOUNT OFF;
 END;
 GO
 
-USE [PROYECT2JF]
+USE [sistemaEmpleadosTP2]
 GO
 
-/****** Object:  StoredProcedure [dbo].[insertMovimiento]    Script Date: 22/4/2024 22:59:33 ******/
+/****** Object:  StoredProcedure [dbo].[insertMovimiento] ******/
 SET ANSI_NULLS ON
 GO
 
@@ -364,122 +483,139 @@ SET QUOTED_IDENTIFIER ON
 GO
 
 CREATE PROCEDURE [dbo].[insertMovimiento]
-    @InnombreEmpl nvarchar(50),
-	@InnombreMov nvarchar(50),
-	@InFecha DATE,
-	@InMonto int,
-	@InNamePostbyUser nvarchar(50),
-	@InPostInIp nvarchar(50),
-	@InOutResult int OUTPUT
-
+    @InNombreEmpleado NVARCHAR(50),
+    @InNombreMovimiento NVARCHAR(50),
+    @InFecha DATE,
+    @InMonto INT,
+    @InPostByUser NVARCHAR(50),
+    @InPostInIp NVARCHAR(50),
+    @OutResultCode INT OUTPUT
 AS
 BEGIN
+    SET NOCOUNT ON;
 
-SET NOCOUNT ON;
+    BEGIN TRY
+        DECLARE @IdUser INT, @IdEmpleado INT, @IdTipoMovimiento INT;
+        DECLARE @SaldoActual INT, @NuevoSaldo INT, @TipoAccion NVARCHAR(50);
+        DECLARE @Descripcion NVARCHAR(2000);
 
-BEGIN TRY
-	DECLARE @Descripcion NVARCHAR(2000);
-	DECLARE @IdUser INT;
-	DECLARE @Nombre NVARCHAR(50);
+        -- Inicialización del resultado de salida
+        SET @OutResultCode = 0;
 
-	DECLARE @IdEmpleado int;
-	DECLARE @IdTipoMov int;
-	DECLARE @SaldoActual int;
-	DECLARE @NuevoSaldo int;
-	DECLARE @TipoAccion NVARCHAR(50);
+        -- Obtener el usuario que realiza la operación
+        SELECT @IdUser = U.Id
+		FROM [sistemaEmpleadosTP2].[dbo].[Usuario] U
+		WHERE U.UserName = @InPostByUser;
 
-	SELECT @IdEmpleado = ValorDocumentoIdentidad FROM Empleado WHERE Nombre = @InnombreEmpl;
-	SELECT @IdTipoMov = Id FROM TipoMovimiento WHERE Nombre = @InnombreMov;
-	SELECT @SaldoActual = SaldoVacaciones FROM Empleado WHERE Nombre = @InnombreEmpl;
-	SELECT @TipoAccion = TipoAccion FROM TipoMovimiento WHERE Nombre = @InnombreMov;
-	SELECT @Nombre = Nombre FROM Empleado WHERE Nombre = @InnombreEmpl;
+        -- Obtener los datos del empleado y tipo de movimiento
+        SELECT @IdEmpleado = E.ValorDocumentoIdentidad,
+        @SaldoActual = E.SaldoVacaciones,
+        @TipoAccion = T.TipoAccion
+		FROM [sistemaEmpleadosTP2].[dbo].[Empleado] E
+        JOIN [sistemaEmpleadosTP2].[dbo].[TipoMovimiento] T ON T.Nombre = @InNombreMovimiento
+		WHERE E.Nombre = @InNombreEmpleado;
 
-	SET @OutResult = 0;
-	SELECT @IdUser = Id FROM Usuario WHERE UserName = @InNamePostbyUser;
+        -- Determinar el nuevo saldo en función del tipo de movimiento
+        SET @NuevoSaldo = CASE WHEN @TipoAccion = 'Credito' THEN @SaldoActual + @InMonto ELSE @SaldoActual - @InMonto END;
 
-	--verifica el tipo de movimiento
-	IF (@TipoAccion = 'Credito')
-	BEGIN
-		SET @NuevoSaldo = @SaldoActual + @InMonto;
-	END;
-	ELSE
-	BEGIN
-		SET @NuevoSaldo = @SaldoActual - @InMonto;
-		SET @InMonto = -(@InMonto);
-	END;
-	
+        -- Verificar si el nuevo saldo es válido
+        IF @NuevoSaldo >= 0
+        BEGIN
+        -- Descripción para trazabilidad
+        SET @Descripcion = CONCAT(CONVERT(VARCHAR(100), @IdEmpleado), ', ', 
+                @InNombreEmpleado, ', ', CONVERT(VARCHAR(50), @NuevoSaldo), ', ', 
+                @InNombreMovimiento, ', ', CONVERT(VARCHAR(50), @InMonto));
 
-	--verifica si el nuevo saldo es menor a negativo
-	IF (@NuevoSaldo >= 0)
-	BEGIN
-		BEGIN TRANSACTION
+        BEGIN TRANSACTION
+        -- Insertar el nuevo movimiento
+        INSERT INTO [sistemaEmpleadosTP2].[dbo].[Movimiento]
+            (IdEmpleado, IdTipoMovimiento, Fecha, Monto, NuevoSaldo, IdPostByUser, PostInIP, PostTime)
+        VALUES
+            (
+            @IdEmpleado,
+            (SELECT Id
+            FROM TipoMovimiento
+            WHERE Nombre = @InNombreMovimiento),
+            @InFecha,
+            CASE WHEN @TipoAccion = 'Debito' THEN -(@InMonto) ELSE @InMonto END,
+            @NuevoSaldo,
+            @IdUser,
+            @InPostInIp,
+            GETDATE());
 
-			SET @Descripcion = CONVERT(VARCHAR(100), (SELECT ValorDocumentoIdentidad FROM Empleado WHERE Nombre = @InnombreEmpl)) + ', ' +
-						@Nombre+', '+
-						CONVERT(VARCHAR(50),@NuevoSaldo)+', '+
-						@InnombreMov+', '+
-						CONVERT(VARCHAR(50),@InMonto)
+        -- Actualizar el saldo de vacaciones del empleado
+        UPDATE Empleado
+                SET SaldoVacaciones = @NuevoSaldo
+                WHERE ValorDocumentoIdentidad = @IdEmpleado;
 
-			--insercion
-			INSERT 
-			INTO 
-				Movimiento(IdEmpleado, IdTipoMovimiento, Fecha, Monto, NuevoSaldo, IdPostByUser, PostInIP, PostTime) 
-			VALUES 
-				(@IdEmpleado, @IdTipoMov, @InFecha, @InMonto, @NuevoSaldo, @IdUser, @InPostInIp, CONVERT(VARCHAR(10), GETDATE(), 101)); 
+        -- Insertar trazabilidad
+        INSERT INTO [sistemaEmpleadosTP2].[dbo].[BitacoraEvento]
+            (
+            idTipoEvento,
+            Descripcion,
+            IdPostByUser,
+            PostInIP,
+            PostTime)
+        VALUES
+            (14, @Descripcion, @IdUser, @InPostInIp, GETDATE());
 
-			UPDATE  Empleado 
-			SET 
-				SaldoVacaciones = @NuevoSaldo
-			WHERE 
-				Nombre = @InnombreEmpl
+        COMMIT TRANSACTION;
+    END;
 
-			--trazabilidad
-			INSERT INTO dbo.BitacoraEvento (idTipoEvento, Descripcion, IdPostByUser, PostInIP, PostTime)
-			VALUES (14, @Descripcion, @IdUser, @InPostInIP,GETDATE());
+        ELSE
+        BEGIN
+        -- Manejo de error por saldo insuficiente
+        SET @OutResultCode = 50011;
 
-		COMMIT TRANSACTION 
-	END;
+        SET @Descripcion = CONCAT((SELECT Descripcion
+        FROM Error
+        WHERE Codigo = @OutResultCode), ', ', 
+            @IdEmpleado, ', ', @InNombreEmpleado, ', ', CONVERT(VARCHAR(100), @SaldoActual), ', ', 
+            @InNombreMovimiento, ', ', CONVERT(VARCHAR(50), @InMonto));
 
-	ELSE
-	BEGIN
-		SET @OutResult = 50011;
+        -- Insertar trazabilidad de error
+        INSERT INTO [sistemaEmpleadosTP2].[dbo].[BitacoraEvento]
+            (
+            idTipoEvento,
+            Descripcion,
+            IdPostByUser,
+            PostInIP,
+            PostTime)
+        VALUES
+            (13, @Descripcion, @IdUser, @InPostInIp, GETDATE());
 
-		SET @Descripcion = (SELECT Descripcion FROM Error WHERE Codigo = @OutResult)+
-					CONVERT(VARCHAR(100), (SELECT ValorDocumentoIdentidad FROM Empleado WHERE Nombre = @InnombreEmpl)) + ', ' +
-					@Nombre+', '+
-					CONVERT(VARCHAR(100),@SaldoActual)+', '+
-					@InnombreMov+', '+
-					CONVERT(VARCHAR(50),@InMonto)
+        PRINT 'El monto excede el saldo de vacaciones.';
+    END;
+    END TRY
 
-		--trazabilidad 
+    BEGIN CATCH
+        -- Manejo de errores y rollback
+        IF @@TRANCOUNT > 0
+        BEGIN
+        ROLLBACK TRANSACTION;
+    END;
 
-		INSERT INTO dbo.BitacoraEvento (idTipoEvento, Descripcion, IdPostByUser, PostInIP, PostTime)
-		VALUES (13, @Descripcion, @IdUser, @InPostInIP, GETDATE());
+        INSERT INTO [sistemaEmpleadosTP2].[dbo].[DBError]
+        (
+        ErrorUsername,
+        ErrorNumber,
+        ErrorState,
+        ErrorSeverity,
+        ErrorLine,
+        ErrorProcedure,
+        ErrorMessage,
+        ErrorDateTime)
+		VALUES
+        (SUSER_NAME(), ERROR_NUMBER(), ERROR_STATE(), ERROR_SEVERITY(), ERROR_LINE(), ERROR_PROCEDURE(), ERROR_MESSAGE(), GETDATE());
 
-		PRINT 'EL monto es mayor al saldo de vacaciones.';
-	END;
+        SET @OutResultCode = 50008; -- Error en base de datos
+    END CATCH
 
-END TRY
-
-BEGIN CATCH
-
-	IF @@TRANCOUNT>0 
-	BEGIN
-		ROLLBACK TRANSACTION;
-	END;
-	
-	INSERT INTO dbo.DBError (DBError.ErrorUsername, DBError.ErrorNumber, ErrorState, ErrorSeverity, ErrorLine, ErrorProcedure, ErrorMessage, ErrorDateTime)
-	VALUES (SUSER_NAME(), ERROR_NUMBER(), ERROR_STATE(), ERROR_SEVERITY(), ERROR_LINE(), ERROR_PROCEDURE(), ERROR_MESSAGE(), GETDATE());
-	
-	
-	SET @OutResult = 50008;   -- error en BD
-
-END CATCH
-SET NOCOUNT OFF;
+    SET NOCOUNT OFF;
 END;
 GO
 
-USE [PROYECT2JF]
+USE [sistemaEmpleadosTP2]
 GO
 
 /****** Object:  StoredProcedure [dbo].[IntentoInsertMovimiento]    Script Date: 22/4/2024 22:59:51 ******/
@@ -490,71 +626,88 @@ SET QUOTED_IDENTIFIER ON
 GO
 
 CREATE PROCEDURE [dbo].[IntentoInsertMovimiento]
-    @InnombreEmpl nvarchar(50),
-	@InnombreMov nvarchar(50),
-	@InMonto int,
-	@InNamePostbyUser nvarchar(50),
-	@InPostInIp nvarchar(50),
-	@OutResult int OUTPUT
-
+    @InNombreEmpleado NVARCHAR(50),
+    @InNombreMovimiento NVARCHAR(50),
+    @InMonto INT,
+    @InPostByUser NVARCHAR(50),
+    @InPostInIp NVARCHAR(50),
+    @OutResultCode INT OUTPUT
 AS
 BEGIN
+    SET NOCOUNT ON;
 
-SET NOCOUNT ON;
+    BEGIN TRY
+        DECLARE @IdUser INT;
+        DECLARE @SaldoActual INT;
+        DECLARE @Descripcion NVARCHAR(2000);
 
-BEGIN TRY
-	DECLARE @Descripcion NVARCHAR(2000);
-	DECLARE @IdUser INT;
-	DECLARE @Nombre NVARCHAR(50);
+        -- Inicialización del resultado de salida
+        SET @OutResultCode = 0;
 
-	DECLARE @SaldoActual int;
+        -- Obtener el usuario que está realizando la acción
+        SELECT @IdUser = U.Id
+		FROM [sistemaEmpleadosTP2].[dbo].[Usuario] U
+		WHERE U.UserName = @InPostByUser;
 
-	SELECT @SaldoActual = SaldoVacaciones FROM Empleado WHERE Nombre = @InnombreEmpl;
-	SELECT @Nombre = Nombre FROM Empleado WHERE Nombre = @InnombreEmpl;
+        -- Obtener el saldo actual del empleado
+        SELECT @SaldoActual = E.SaldoVacaciones
+		FROM [sistemaEmpleadosTP2].[dbo].[Empleado] E
+		WHERE E.Nombre = @InNombreEmpleado;
 
-	SET @OutResult = 0;
-	SELECT @IdUser = Id FROM Usuario WHERE UserName = @InNamePostbyUser;
+        -- Construir la descripción para trazabilidad
+        SET @Descripcion = CONCAT('El usuario canceló la inserción, ', CONVERT(VARCHAR(100), 
+		(SELECT E.ValorDocumentoIdentidad FROM Empleado E WHERE E.Nombre = @InNombreEmpleado)), ', ',
+        @InNombreEmpleado, ', ', CONVERT(VARCHAR(100), @SaldoActual), ', ', @InNombreMovimiento, ', ',
+        CONVERT(VARCHAR(50), @InMonto));
 
-	
-	BEGIN TRANSACTION
-		SET @Descripcion = 'El usuario cancel� la inserci�n, '+
-					CONVERT(VARCHAR(100), (SELECT ValorDocumentoIdentidad FROM Empleado WHERE Nombre = @InnombreEmpl)) + ', ' +
-					@Nombre+', '+
-					CONVERT(VARCHAR(100),@SaldoActual)+', '+
-					@InnombreMov+', '+
-					CONVERT(VARCHAR(50),@InMonto)
+        -- Comenzar transacción
+        BEGIN TRANSACTION
+            -- Insertar trazabilidad del evento
+            INSERT INTO [sistemaEmpleadosTP2].[dbo].[BitacoraEvento]
+			(
+			idTipoEvento,
+			Descripcion,
+			IdPostByUser,
+			PostInIP,
+			PostTime)
+			VALUES
+			(13, @Descripcion, @IdUser, @InPostInIp, GETDATE());
+        COMMIT TRANSACTION;
 
-		--trazabilidad Descripci�n del error, Valor de documento identidad del empleado, nombre, Saldo actual, Nombre de tipo de movimiento, y monto. 
+    END TRY
+    BEGIN CATCH
+        -- Manejo de errores y rollback
+        IF @@TRANCOUNT > 0
+        BEGIN
+        ROLLBACK TRANSACTION;
+    END;
 
-		INSERT INTO dbo.BitacoraEvento (idTipoEvento, Descripcion, IdPostByUser, PostInIP, PostTime)
-		VALUES (13, @Descripcion, @IdUser, @InPostInIP, GETDATE());
-			
-	COMMIT TRANSACTION 
+        -- Loguear el error en la tabla DBError
+        INSERT INTO [sistemaEmpleadosTP2].[dbo].[DBError]
+        (
+        ErrorUsername,
+        ErrorNumber,
+        ErrorState,
+        ErrorSeverity,
+        ErrorLine,
+        ErrorProcedure,
+        ErrorMessage,
+        ErrorDateTime)
+		VALUES
+        (SUSER_NAME(), ERROR_NUMBER(), ERROR_STATE(), ERROR_SEVERITY(), ERROR_LINE(), ERROR_PROCEDURE(), ERROR_MESSAGE(), GETDATE());
 
-END TRY
+        -- Asignar código de error de base de datos al resultado de salida
+        SET @OutResultCode = 50008;
+    END CATCH
 
-BEGIN CATCH
-
-	IF @@TRANCOUNT>0 
-	BEGIN
-		ROLLBACK TRANSACTION;
-	END;
-	
-	INSERT INTO dbo.DBError (DBError.ErrorUsername, DBError.ErrorNumber, ErrorState, ErrorSeverity, ErrorLine, ErrorProcedure, ErrorMessage, ErrorDateTime)
-	VALUES (SUSER_NAME(), ERROR_NUMBER(), ERROR_STATE(), ERROR_SEVERITY(), ERROR_LINE(), ERROR_PROCEDURE(), ERROR_MESSAGE(), GETDATE());
-	
-	
-	SET @OutResult = 50008;   -- error en BD
-
-END CATCH
-SET NOCOUNT OFF;
+    SET NOCOUNT OFF;
 END;
 GO
 
-USE [PROYECT2JF]
+USE [sistemaEmpleadosTP2]
 GO
 
-/****** Object:  StoredProcedure [dbo].[listarEmpleados]    Script Date: 22/4/2024 23:00:05 ******/
+/****** Object:  StoredProcedure [dbo].[listarEmpleados] ******/
 SET ANSI_NULLS ON
 GO
 
@@ -562,106 +715,125 @@ SET QUOTED_IDENTIFIER ON
 GO
 
 CREATE PROCEDURE [dbo].[listarEmpleados]
-    @InvarBuscar nvarchar(50),
-	@InNamePostbyUser nvarchar(50),
-	@InPostInIP nvarchar(50),
-	@OutResult INT OUTPUT
+    @InBuscar NVARCHAR(50),
+    @InPostByUser NVARCHAR(50),
+    @InPostInIP NVARCHAR(50),
+    @OutResultCode INT OUTPUT
 AS
 BEGIN
-	
-SET NOCOUNT ON;
+    SET NOCOUNT ON;
 
-BEGIN TRY
+    BEGIN TRY
+        DECLARE @IdUser INT;
 
-	DECLARE @IdUser int;
+        -- Inicialización del resultado de salida
+        SET @OutResultCode = 0;
 
-	SET @OutResult = 0;
-	SELECT @IdUser = Id FROM Usuario WHERE UserName = @InNamePostbyUser;
+        -- Obtener ID del usuario que realiza la búsqueda
+        SELECT @IdUser = U.Id
+    FROM [sistemaEmpleadosTP2].[dbo].[Usuario] U
+    WHERE U.UserName = @InPostByUser;
 
-	BEGIN TRANSACTION 
-		IF @InvarBuscar is null or @InvarBuscar = ''
-		BEGIN
-			--consulta
-			SELECT  
-				ValorDocumentoIdentidad,
-				Nombre
-			FROM 
-				Empleado
-			WHERE
-				Activo = 1
-			ORDER BY 
-				Nombre DESC;
+        -- Iniciar transacción
+        BEGIN TRANSACTION
 
-			--trazabilidad
-			INSERT INTO dbo.BitacoraEvento (idTipoEvento, Descripcion, IdPostByUser, PostInIP, PostTime)
-			VALUES (11, @InvarBuscar, @IdUser, @InPostInIP, GETDATE());
-		END;
+        -- Consulta según el valor de búsqueda
+        IF @InBuscar IS NULL OR @InBuscar = ''
+        BEGIN
+        -- Caso sin búsqueda específica: listar todos los empleados activos
+        SELECT E.ValorDocumentoIdentidad, E.Nombre
+        FROM [sistemaEmpleadosTP2].[dbo].[Empleado] E
+        WHERE E.Activo = 1
+        ORDER BY E.Nombre DESC;
 
-		ELSE IF @InvarBuscar LIKE '%[^0-9]%'
-		BEGIN
-			--consulta
-			SELECT 
-				ValorDocumentoIdentidad,
-				Nombre
-			FROM 
-				Empleado
-			WHERE 
-				Nombre LIKE '%' + @InvarBuscar + '%'
-				AND
-				Activo = 1
-			ORDER BY 
-				Nombre DESC;
+        -- Insertar evento de trazabilidad
+        INSERT INTO [sistemaEmpleadosTP2].[dbo].[BitacoraEvento]
+            (
+            idTipoEvento,
+            Descripcion,
+            IdPostByUser,
+            PostInIP,
+            PostTime)
+        VALUES
+            (11, 'Listado completo de empleados', @IdUser, @InPostInIP, GETDATE());
+    END
+        ELSE IF @InBuscar LIKE '%[^0-9]%'
+        BEGIN
+        -- Caso de búsqueda por nombre
+        SELECT E.ValorDocumentoIdentidad, E.Nombre
+        FROM [sistemaEmpleadosTP2].[dbo].[Empleado] E
+        WHERE E.Nombre LIKE '%' + @InBuscar + '%'
+            AND E.Activo = 1
+        ORDER BY E.Nombre DESC;
 
-			--trazabilidad
-			INSERT INTO dbo.BitacoraEvento (idTipoEvento, Descripcion, IdPostByUser, PostInIP, PostTime)
-			VALUES (11, @InvarBuscar, @IdUser, @InPostInIP, GETDATE());
-		END;
+        -- Insertar evento de trazabilidad
+        INSERT INTO [sistemaEmpleadosTP2].[dbo].[BitacoraEvento]
+            (
+            idTipoEvento,
+            Descripcion,
+            IdPostByUser,
+            PostInIP,
+            PostTime)
+        VALUES
+            (11, CONCAT('Búsqueda por nombre: ', @InBuscar), @IdUser, @InPostInIP, GETDATE());
+    END
+        ELSE
+        BEGIN
+        -- Caso de búsqueda por valor numérico de documento de identidad
+        SELECT E.ValorDocumentoIdentidad, E.Nombre
+        FROM [sistemaEmpleadosTP2].[dbo].[Empleado] E
+        WHERE CAST(E.ValorDocumentoIdentidad AS VARCHAR(20)) LIKE '%' + @InBuscar + '%'
+            AND E.Activo = 1
+        ORDER BY E.Nombre DESC;
 
-		ELSE
-		BEGIN
-			--consulta
-			SELECT 
-				ValorDocumentoIdentidad,
-				Nombre
-			FROM 
-				Empleado
-			WHERE 
-				CAST(ValorDocumentoIdentidad AS VARCHAR(20)) LIKE '%' + @InvarBuscar + '%'
-				AND Activo = 1
-			ORDER BY 
-				Nombre DESC;
+        -- Insertar evento de trazabilidad
+        INSERT INTO [sistemaEmpleadosTP2].[dbo].[BitacoraEvento]
+            (
+            idTipoEvento,
+            Descripcion,
+            IdPostByUser,
+            PostInIP,
+            PostTime)
+        VALUES
+            (12, CONCAT('Búsqueda por documento: ', @InBuscar), @IdUser, @InPostInIP, GETDATE());
+    END
 
-			--trazabilidad
-			INSERT INTO dbo.BitacoraEvento (idTipoEvento, Descripcion, IdPostByUser, PostInIP, PostTime)
-			VALUES (12, @InvarBuscar, @IdUser, @InPostInIP, GETDATE());
-		END;
-	COMMIT TRANSACTION 
+        COMMIT TRANSACTION;
+    
+    END TRY
+    BEGIN CATCH
+        -- Manejo de errores y rollback
+        IF @@TRANCOUNT > 0
+        BEGIN
+        ROLLBACK TRANSACTION;
+    END;
 
-END TRY
-BEGIN CATCH
+        -- Loguear el error en la tabla DBError
+        INSERT INTO [sistemaEmpleadosTP2].[dbo].[DBError]
+        (
+        ErrorUsername,
+        ErrorNumber,
+        ErrorState,
+        ErrorSeverity,
+        ErrorLine,
+        ErrorProcedure,
+        ErrorMessage,
+        ErrorDateTime)
+		VALUES
+        (SUSER_NAME(), ERROR_NUMBER(), ERROR_STATE(), ERROR_SEVERITY(), ERROR_LINE(), ERROR_PROCEDURE(), ERROR_MESSAGE(), GETDATE());
 
-	IF @@TRANCOUNT>0 
-	BEGIN
-		ROLLBACK TRANSACTION;
-	END;
-	
-	INSERT INTO dbo.DBError (DBError.ErrorUsername, DBError.ErrorNumber, ErrorState, ErrorSeverity, ErrorLine, ErrorProcedure, ErrorMessage, ErrorDateTime)
-	VALUES (SUSER_NAME(), ERROR_NUMBER(), ERROR_STATE(), ERROR_SEVERITY(), ERROR_LINE(), ERROR_PROCEDURE(), ERROR_MESSAGE(), GETDATE());
-	
-	
-	SET @OutResult = 50008;   -- error en BD
+        -- Asignar código de error de base de datos al resultado de salida
+        SET @OutResultCode = 50008;
+    END CATCH
 
-END CATCH
-
-SET NOCOUNT OFF;
-
+    SET NOCOUNT OFF;
 END;
 GO
 
-USE [PROYECT2JF]
+USE [sistemaEmpleadosTP2]
 GO
 
-/****** Object:  StoredProcedure [dbo].[listarTiposMov]    Script Date: 22/4/2024 23:00:19 ******/
+/****** Object:  StoredProcedure [dbo].[listarTiposMov] ******/
 SET ANSI_NULLS ON
 GO
 
@@ -669,45 +841,56 @@ SET QUOTED_IDENTIFIER ON
 GO
 
 CREATE PROCEDURE [dbo].[listarTiposMov]
-	@OutResult int OUTPUT
-
+    @OutResultCode INT OUTPUT
 AS
 BEGIN
+    SET NOCOUNT ON;
 
-SET NOCOUNT ON;
+    BEGIN TRY
+        -- Inicialización del resultado de salida
+        SET @OutResultCode = 0;
 
-BEGIN TRY
-	SET @OutResult = 0;
-	BEGIN TRANSACTION
-		SELECT 
-			Nombre,
-			TipoAccion
-		FROM 
-			TipoMovimiento
-			
-	COMMIT TRANSACTION 
+        -- Iniciar transacción
+        BEGIN TRANSACTION
 
-END TRY
+        -- Selección de los tipos de movimiento
+        SELECT TM.Nombre, TM.TipoAccion
+		FROM [sistemaEmpleadosTP2].[dbo].[TipoMovimiento] TM;
 
-BEGIN CATCH
+        -- Finalizar transacción
+        COMMIT TRANSACTION;
+    
+    END TRY
+    BEGIN CATCH
+        -- Manejo de errores y rollback
+        IF @@TRANCOUNT > 0
+        BEGIN
+        ROLLBACK TRANSACTION;
+    END;
 
-	IF @@TRANCOUNT>0 
-	BEGIN
-		ROLLBACK TRANSACTION;
-	END;
-	
-	INSERT INTO dbo.DBError (DBError.ErrorUsername, DBError.ErrorNumber, ErrorState, ErrorSeverity, ErrorLine, ErrorProcedure, ErrorMessage, ErrorDateTime)
-	VALUES (SUSER_NAME(), ERROR_NUMBER(), ERROR_STATE(), ERROR_SEVERITY(), ERROR_LINE(), ERROR_PROCEDURE(), ERROR_MESSAGE(), GETDATE());
-	
-	
-	SET @OutResult = 50008;   -- error en BD
+        -- Insertar el error en la tabla DBError
+        INSERT INTO [sistemaEmpleadosTP2].[dbo].[DBError]
+        (
+        ErrorUsername,
+        ErrorNumber,
+        ErrorState,
+        ErrorSeverity,
+        ErrorLine,
+        ErrorProcedure,
+        ErrorMessage,
+        ErrorDateTime)
+		VALUES
+        (SUSER_NAME(), ERROR_NUMBER(), ERROR_STATE(), ERROR_SEVERITY(), ERROR_LINE(), ERROR_PROCEDURE(), ERROR_MESSAGE(), GETDATE());
 
-END CATCH
-SET NOCOUNT OFF;
+        -- Asignar código de error de base de datos al resultado de salida
+        SET @OutResultCode = 50008; 
+    END CATCH
+
+    SET NOCOUNT OFF;
 END;
 GO
 
-USE [PROYECT2JF]
+USE [sistemaEmpleadosTP2]
 GO
 
 /****** Object:  StoredProcedure [dbo].[loginUser]    Script Date: 22/4/2024 23:00:30 ******/
@@ -718,109 +901,151 @@ SET QUOTED_IDENTIFIER ON
 GO
 
 CREATE PROCEDURE [dbo].[loginUser]
-@InuserName nvarchar(50),
-@InuserPassword nvarchar(50),
-@InNamePostbyUser nvarchar(50),
-@InPostInIP nvarchar(50),
-@OutResult int OUTPUT
-
+    @InuserName NVARCHAR(50),
+    @InuserPassword NVARCHAR(50),
+    @InNamePostbyUser NVARCHAR(50),
+    @InPostInIP NVARCHAR(50),
+    @OutResultCode INT OUTPUT
 AS
 BEGIN
+    SET NOCOUNT ON;
 
-SET NOCOUNT ON;
+    BEGIN TRY
+        -- Declaración de variables
+        DECLARE @Descripcion NVARCHAR(2000);
+        DECLARE @CountIntent INT;
+        DECLARE @IdUser INT;
+        DECLARE @FechaActual DATETIME = GETDATE();
+        DECLARE @FechaAnterior DATETIME = DATEADD(MINUTE, -30, @FechaActual);
 
-BEGIN TRY
-	DECLARE @Descripcion NVARCHAR(2000);
-	DECLARE @countIntent int;
-	DECLARE @idUser int;
-	DECLARE @fechaActual DATETIME = GETDATE();
-	DECLARE @fechaAnterior DATETIME = DATEADD(MINUTE, -30, @fechaActual);
+        -- Inicializar el resultado de salida
+        SET @OutResultCode = 0;
 
-	SET @OutResult = 0;
+        -- Validar si el usuario existe
+        IF EXISTS (SELECT 1
+		FROM [sistemaEmpleadosTP2].[dbo].[Usuario] U
+		WHERE U.UserName = @InuserName)
+        BEGIN
+        -- Obtener el Id del usuario
+        SELECT @IdUser = U.Id
+        FROM [sistemaEmpleadosTP2].[dbo].[Usuario] U
+        WHERE U.UserName = @InuserName;
 
-	IF EXISTS (SELECT 1 FROM Usuario WHERE UserName = @InuserName)
-	BEGIN
-		SELECT @idUser = Id FROM Usuario WHERE UserName = @InuserName;
-		SELECT @countIntent = COUNT(*) FROM BitacoraEvento WHERE (IdPostByUser = @idUser) and (idTipoEvento = 2) and (PostTime >= @fechaAnterior);
+        -- Contar los intentos fallidos recientes
+        SELECT @CountIntent = COUNT(*)
+        FROM [sistemaEmpleadosTP2].[dbo].[BitacoraEvento] BE
+        WHERE BE.IdPostByUser = @IdUser
+            AND BE.idTipoEvento = 2
+            AND BE.PostTime >= @FechaAnterior;
 
-		IF ((SELECT U.Password FROM Usuario U WHERE U.UserName = @InuserName) = @InuserPassword)
-		BEGIN
-			IF (@countIntent <= 5)
-			BEGIN
-				BEGIN TRANSACTION
-				
-					--trazabilidad
-					INSERT INTO dbo.BitacoraEvento (idTipoEvento, Descripcion, IdPostByUser, PostInIP, PostTime)
-					VALUES (1, '', @IdUser, @InPostInIP, GETDATE());
+        -- Validar contraseña
+        IF (SELECT U.Password
+        FROM [sistemaEmpleadosTP2].[dbo].[Usuario] U
+        WHERE U.UserName = @InuserName) = @InuserPassword
+            BEGIN
+            -- Verificar si el usuario ha superado el límite de intentos fallidos
+            IF @CountIntent <= 5
+                BEGIN
+                BEGIN TRANSACTION
+                -- Insertar evento de trazabilidad exitoso
+                INSERT INTO [sistemaEmpleadosTP2].[dbo].[BitacoraEvento]
+                    (idTipoEvento, Descripcion, IdPostByUser, PostInIP, PostTime)
+                VALUES
+                    (1, '', @IdUser, @InPostInIP, GETDATE());
+                COMMIT TRANSACTION;
+            END
+                ELSE
+                BEGIN
+                SET @OutResultCode = 50003;
 
-				COMMIT TRANSACTION 
-			END;
-			ELSE
-			BEGIN
-				SET @OutResult = 50003;
+                -- Insertar evento de bloqueo por demasiados intentos
+                INSERT INTO [sistemaEmpleadosTP2].[dbo].[BitacoraEvento]
+                    (idTipoEvento, Descripcion, IdPostByUser, PostInIP, PostTime)
+                VALUES
+                    (3,
+                        (SELECT E.Descripcion
+                        FROM [sistemaEmpleadosTP2].[dbo].[Error] E
+                        WHERE E.Codigo = @OutResultCode) + ', ' + CONVERT(NVARCHAR(50), @CountIntent),
+                        @IdUser,
+                        @InPostInIP,
+                        GETDATE());
 
-				--trazabilidad
-				INSERT INTO dbo.BitacoraEvento (idTipoEvento, Descripcion, IdPostByUser, PostInIP, PostTime)
-				VALUES (3, 
-						(SELECT Descripcion FROM Error WHERE Codigo = @OutResult)+', '+CONVERT(NVARCHAR(50),@countIntent), 
-						(SELECT ID FROM Usuario WHERE UserName = @InuserName), 
-						@InPostInIP, 
-						GETDATE());
+                PRINT 'Login deshabilitado.';
+            END;
+        END
+            ELSE
+            BEGIN
+            SET @OutResultCode = 50002;
 
-				PRINT 'login deshabilitado.';
-			END;
-		END;
+            -- Insertar evento de contraseña incorrecta
+            INSERT INTO [sistemaEmpleadosTP2].[dbo].[BitacoraEvento]
+                (idTipoEvento, Descripcion, IdPostByUser, PostInIP, PostTime)
+            VALUES
+                (2,
+                    (SELECT E.Descripcion
+                    FROM [sistemaEmpleadosTP2].[dbo].[Error] E
+                    WHERE E.Codigo = @OutResultCode) + ', ' + CONVERT(NVARCHAR(50), @CountIntent),
+                    @IdUser,
+                    @InPostInIP,
+                    GETDATE());
 
-		ELSE
-		BEGIN
-			SET @OutResult = 50002;
+            PRINT 'Contraseña incorrecta.';
+        END;
+    END
+        ELSE
+        BEGIN
+        SET @OutResultCode = 50001;
 
-			--trazabilidad
-			INSERT INTO dbo.BitacoraEvento (idTipoEvento, Descripcion, IdPostByUser, PostInIP, PostTime)
-			VALUES (2, 
-					(SELECT Descripcion FROM Error WHERE Codigo = @OutResult)+', '+CONVERT(NVARCHAR(50),@countIntent), 
-					(SELECT ID FROM Usuario WHERE UserName = @InuserName), 
-					@InPostInIP, 
-					GETDATE());
+        -- Insertar evento de usuario no existente
+        INSERT INTO [sistemaEmpleadosTP2].[dbo].[BitacoraEvento]
+            (idTipoEvento, Descripcion, IdPostByUser, PostInIP, PostTime)
+        VALUES
+            (
+            2,
+            (SELECT E.Descripcion
+            FROM [sistemaEmpleadosTP2].[dbo].[Error] E
+            WHERE E.Codigo = @OutResultCode) + ', ' + @InuserName,
+            1,
+            @InPostInIP,
+            GETDATE());
 
-			PRINT 'contrasena no es correcta.';
-		END;
-	END;
+        PRINT 'Nombre de usuario no existe.';
+    END;
 
-	ELSE
-	BEGIN
-		SET @OutResult = 50001;
+    END TRY
+    BEGIN CATCH
+        -- Rollback en caso de error
+        IF @@TRANCOUNT > 0 
+        BEGIN
+        ROLLBACK TRANSACTION;
+    END;
 
-		--trazabilidad
-		INSERT INTO dbo.BitacoraEvento (idTipoEvento, Descripcion, IdPostByUser, PostInIP, PostTime)
-		VALUES (2, (SELECT Descripcion FROM Error WHERE Codigo = @OutResult)+', '+@InuserName, 1, @InPostInIP, GETDATE());
+        -- Registrar el error en la tabla DBError
+        INSERT INTO [sistemaEmpleadosTP2].[dbo].[DBError]
+        (
+        ErrorUsername,
+        ErrorNumber,
+        ErrorState,
+        ErrorSeverity,
+        ErrorLine,
+        ErrorProcedure,
+        ErrorMessage,
+        ErrorDateTime)
+		VALUES
+        (SUSER_NAME(), ERROR_NUMBER(), ERROR_STATE(), ERROR_SEVERITY(), ERROR_LINE(), ERROR_PROCEDURE(), ERROR_MESSAGE(), GETDATE());
 
-		PRINT 'nombre no existe.';
-	END;
-END TRY
+        -- Asignar el código de error de la base de datos al resultado de salida
+        SET @OutResultCode = 50008;
+    END CATCH
 
-BEGIN CATCH
-
-	IF @@TRANCOUNT>0 
-	BEGIN
-		ROLLBACK TRANSACTION;
-	END;
-	
-	INSERT INTO dbo.DBError (DBError.ErrorUsername, DBError.ErrorNumber, ErrorState, ErrorSeverity, ErrorLine, ErrorProcedure, ErrorMessage, ErrorDateTime)
-	VALUES (SUSER_NAME(), ERROR_NUMBER(), ERROR_STATE(), ERROR_SEVERITY(), ERROR_LINE(), ERROR_PROCEDURE(), ERROR_MESSAGE(), GETDATE());
-	
-	
-	SET @OutResult = 50008;   -- error en BD
-
-END CATCH
-SET NOCOUNT OFF;
+    SET NOCOUNT OFF;
 END;
 GO
 
-USE [PROYECT2JF]
+USE [sistemaEmpleadosTP2]
 GO
 
-/****** Object:  StoredProcedure [dbo].[updateEmpleado]    Script Date: 22/4/2024 23:01:16 ******/
+/****** Object:  StoredProcedure [dbo].[updateEmpleado] ******/
 SET ANSI_NULLS ON
 GO
 
@@ -828,131 +1053,162 @@ SET QUOTED_IDENTIFIER ON
 GO
 
 CREATE PROCEDURE [dbo].[updateEmpleado]
-	@InvalorDocIdent int,
-	@InNuevoDocIdent int,
-	@Innombre nvarchar(50),
-	@InidPuesto int,
-	@InNamePostbyUser nvarchar(50),
-	@InPostInIP nvarchar(50),
-	@OutResult int OUTPUT
-
+    @InvalorDocIdent INT,
+    @InNuevoDocIdent INT,
+    @Innombre NVARCHAR(50),
+    @InidPuesto INT,
+    @InNamePostbyUser NVARCHAR(50),
+    @InPostInIP NVARCHAR(50),
+    @OutResultCode INT OUTPUT
 AS
 BEGIN
+    SET NOCOUNT ON;
 
-SET NOCOUNT ON;
+    BEGIN TRY
+        -- Declaraciones de variables
+        DECLARE @Descripcion NVARCHAR(2000);
+        DECLARE @DescripcionError NVARCHAR(500);
+        DECLARE @IdUser INT;
+        DECLARE @NombreAnt NVARCHAR(50);
+        DECLARE @IdPuestoAnt INT;
+        DECLARE @SaldoActual INT;
 
-BEGIN TRY
+        -- Obtener valores actuales del empleado
+        SELECT
+        @NombreAnt = E.Nombre,
+        @IdPuestoAnt = E.IdPuesto,
+        @SaldoActual = E.SaldoVacaciones
+		FROM [sistemaEmpleadosTP2].[dbo].[Empleado] E
+		WHERE E.ValorDocumentoIdentidad = @InvalorDocIdent;
 
-	DECLARE @Descripcion NVARCHAR(2000);
-	DECLARE @Descripcion2 NVARCHAR(500);
-	DECLARE @IdUser INT;
+        -- Descripción de la actualización
+        SET @Descripcion = COALESCE(CONVERT(VARCHAR(100), @InvalorDocIdent), '') + ', ' +
+                           COALESCE(@NombreAnt, '') + ', ' +
+                           COALESCE(CONVERT(VARCHAR(100), @IdPuestoAnt), '') + ', ' +
+                           COALESCE(CONVERT(VARCHAR(100), @InNuevoDocIdent), '') + ', ' +
+                           COALESCE(@Innombre, '') + ', ' +
+                           COALESCE(CONVERT(VARCHAR(100), @InidPuesto), '') + ', ' +
+                           COALESCE(CONVERT(VARCHAR(100), @SaldoActual), '');
 
-	DECLARE @NombreAnt NVARCHAR(50);
-	DECLARE @IdPuestoAnt INT;
-	DECLARE @SaldoActual INT;
+        -- Inicializar resultado de salida
+        SET @OutResultCode = 0;
 
-	SELECT @NombreAnt = E.Nombre
-	FROM dbo.Empleado E
-	WHERE E.ValorDocumentoIdentidad = @InvalorDocIdent;
+        -- Obtener Id del usuario que ejecuta la acción
+        SELECT @IdUser = U.Id
+		FROM [sistemaEmpleadosTP2].[dbo].[Usuario] U
+		WHERE U.UserName = @InNamePostbyUser;
 
-	SELECT @IdPuestoAnt = E.IdPuesto
-	FROM dbo.Empleado E
-	WHERE E.ValorDocumentoIdentidad = @InvalorDocIdent;
+        -- Validar si el empleado con el documento de identidad actual existe
+        IF EXISTS (SELECT 1
+		FROM [sistemaEmpleadosTP2].[dbo].[Empleado] E
+		WHERE E.ValorDocumentoIdentidad = @InvalorDocIdent)
+        BEGIN
+        -- Validar si el nuevo documento de identidad no está duplicado
+        IF NOT EXISTS (SELECT 1
+        FROM [sistemaEmpleadosTP2].[dbo].[Empleado] E
+        WHERE E.ValorDocumentoIdentidad = @InNuevoDocIdent)
+            BEGIN
+            -- Validar si el nuevo nombre no está duplicado
+            IF NOT EXISTS (SELECT 1
+            FROM [sistemaEmpleadosTP2].[dbo].[Empleado] E
+            WHERE E.Nombre = @Innombre)
+                BEGIN
+                -- Iniciar transacción para la actualización
+                BEGIN TRANSACTION
+                -- Actualizar empleado
+                UPDATE Empleado
+                        SET 
+                            Nombre = @Innombre,
+                            ValorDocumentoIdentidad = @InNuevoDocIdent,
+                            IdPuesto = @InidPuesto
+                        WHERE 
+                            ValorDocumentoIdentidad = @InvalorDocIdent;
 
-	SELECT @SaldoActual = E.SaldoVacaciones
-	FROM dbo.Empleado E
-	WHERE E.ValorDocumentoIdentidad = @InvalorDocIdent;
+                -- Insertar trazabilidad de la operación
+                INSERT INTO [sistemaEmpleadosTP2].[dbo].[BitacoraEvento]
+                    (
+                    idTipoEvento,
+                    Descripcion,
+                    IdPostByUser,
+                    PostInIP,
+                    PostTime)
+                VALUES
+                    (8, @Descripcion, @IdUser, @InPostInIP, GETDATE());
+                COMMIT TRANSACTION;
+            END
+                ELSE
+                BEGIN
+                -- Manejo de error: el nombre ya existe
+                SET @OutResultCode = 50007;
+                SELECT @DescripcionError = E.Descripcion
+                FROM [sistemaEmpleadosTP2].[dbo].[Error] E
+                WHERE E.Codigo = @OutResultCode;
 
-	SET @Descripcion = COALESCE(CONVERT(VARCHAR(100), @InvalorDocIdent), '') + ', ' +
-                  COALESCE(@NombreAnt, '') + ', ' + 
-                  COALESCE(CONVERT(VARCHAR(100), @IdPuestoAnt), '') + ', ' + 
-                  COALESCE(CONVERT(VARCHAR(100), @InNuevoDocIdent), '') + ', ' +
-                  COALESCE(@nombre, '') + ', ' +
-                  COALESCE(CONVERT(VARCHAR(100), @InidPuesto), '') + ', ' + 
-                  COALESCE(CONVERT(VARCHAR(100), @SaldoActual), '');
+                -- Insertar trazabilidad del error
+                INSERT INTO [sistemaEmpleadosTP2].[dbo].[BitacoraEvento]
+                    (
+                    idTipoEvento,
+                    Descripcion,
+                    IdPostByUser,
+                    PostInIP,
+                    PostTime)
+                VALUES
+                    (5, @DescripcionError + ', ' + @Descripcion, @IdUser, @InPostInIP, GETDATE());
 
-	SET @OutResult = 0;
-	SELECT @IdUser = Id FROM Usuario WHERE UserName = @InNamePostbyUser;
+                PRINT 'Empleado con mismo nombre ya existe en actualización.';
+            END;
+        END;
+            ELSE
+            BEGIN
+            -- Manejo de error: el documento de identidad ya existe
+            SET @OutResultCode = 50006;
+            SELECT @DescripcionError = E.Descripcion
+            FROM [sistemaEmpleadosTP2].[dbo].[Error] E
+            WHERE E.Codigo = @OutResultCode;
 
-	IF EXISTS (SELECT 1 FROM Empleado WHERE ValorDocumentoIdentidad = @InvalorDocIdent)
-	BEGIN
-		IF NOT EXISTS (SELECT 1 FROM Empleado WHERE ValorDocumentoIdentidad = @InNuevoDocIdent)
-		BEGIN
-			IF NOT EXISTS (SELECT 1 FROM Empleado WHERE Nombre = @Innombre)
-			BEGIN
-				BEGIN TRANSACTION
-					--update
-					UPDATE  Empleado 
-					SET 
-						Nombre = @Innombre,
-						ValorDocumentoIdentidad = @InNuevoDocIdent,
-						IdPuesto = @InidPuesto
-					WHERE 
-						ValorDocumentoIdentidad = @InvalorDocIdent
+            -- Insertar trazabilidad del error
+            INSERT INTO [sistemaEmpleadosTP2].[dbo].[BitacoraEvento]
+                (idTipoEvento, Descripcion, IdPostByUser, PostInIP, PostTime)
+            VALUES
+                (5, @DescripcionError + ', ' + @Descripcion, @IdUser, @InPostInIP, GETDATE());
 
-					--trazabildad
-					INSERT INTO dbo.BitacoraEvento (idTipoEvento, Descripcion, IdPostByUser, PostInIP, PostTime)
-					VALUES (8, @Descripcion , @IdUser, @InPostInIP, GETDATE());
-				COMMIT TRANSACTION 
-			END;
+            PRINT 'Empleado con ValorDocumentoIdentidad ya existe en actualización.';
+        END;
+    END
+        ELSE
+        BEGIN
+        -- Manejo de error: el empleado no existe
+        SET @OutResultCode = 50012;
+        SELECT @DescripcionError = E.Descripcion
+        FROM [sistemaEmpleadosTP2].[dbo].[Error] E
+        WHERE E.Codigo = @OutResultCode;
 
-			ElSE
-			BEGIN
-				SET @OutResult = 50007;
-				SELECT @Descripcion2 = Descripcion FROM Error WHERE Codigo = @OutResult;
+        -- Insertar trazabilidad del error
+        INSERT INTO [sistemaEmpleadosTP2].[dbo].[BitacoraEvento]
+            (idTipoEvento, Descripcion, IdPostByUser, PostInIP, PostTime)
+        VALUES
+            (5, @DescripcionError + ', ' + @Descripcion, @IdUser, @InPostInIP, GETDATE());
 
-				--trazabilidad
-				INSERT INTO dbo.BitacoraEvento (idTipoEvento, Descripcion, IdPostByUser, PostInIP, PostTime)
-				VALUES (5, @Descripcion2 +', '+ @Descripcion , @IdUser, @InPostInIP, GETDATE());
+        PRINT 'No existe el empleado.';
+    END;
 
-				PRINT 'Empleado con mismo nombre ya existe en actualizaci�n.';
-			END;
-		END;
+    END TRY
+    BEGIN CATCH
+        -- Rollback en caso de error
+        IF @@TRANCOUNT > 0 
+        BEGIN
+        ROLLBACK TRANSACTION;
+    END;
 
-		ELSE
-		BEGIN
-			SET @OutResult = 50006;
-			SELECT @Descripcion2 = Descripcion FROM Error WHERE Codigo = @OutResult;
+        -- Insertar el error en la tabla DBError
+        INSERT INTO [sistemaEmpleadosTP2].[dbo].[DBError]
+        (ErrorUsername, ErrorNumber, ErrorState, ErrorSeverity, ErrorLine, ErrorProcedure, ErrorMessage, ErrorDateTime)
+    VALUES
+        (SUSER_NAME(), ERROR_NUMBER(), ERROR_STATE(), ERROR_SEVERITY(), ERROR_LINE(), ERROR_PROCEDURE(), ERROR_MESSAGE(), GETDATE());
 
-			--trazabilidad
-			INSERT INTO dbo.BitacoraEvento (idTipoEvento, Descripcion, IdPostByUser, PostInIP, PostTime)
-			VALUES (5,@Descripcion2 +', '+ @Descripcion , @IdUser, @InPostInIP, GETDATE());
+        -- Asignar el código de error de la base de datos al resultado de salida
+        SET @OutResultCode = 50008;
+    END CATCH
 
-			PRINT 'Empleado con ValorDocumentoIdentidad ya existe en actualizacion.';
-		END;
-	END;
-
-	ELSE
-	BEGIN
-		SET @OutResult = 50012;
-		SELECT @Descripcion2 = Descripcion FROM Error WHERE Codigo = @OutResult;
-
-		--trazabilidad
-		INSERT INTO dbo.BitacoraEvento (idTipoEvento, Descripcion, IdPostByUser, PostInIP, PostTime)
-		VALUES (5, @Descripcion2 +', '+ @Descripcion, @IdUser, @InPostInIP, GETDATE());
-
-		PRINT 'No existe el empleado.';
-	END;
-
-END TRY
-
-BEGIN CATCH
-
-	IF @@TRANCOUNT>0 
-	BEGIN
-		ROLLBACK TRANSACTION;
-	END;
-	
-	INSERT INTO dbo.DBError (DBError.ErrorUsername, DBError.ErrorNumber, ErrorState, ErrorSeverity, ErrorLine, ErrorProcedure, ErrorMessage, ErrorDateTime)
-	VALUES (SUSER_NAME(), ERROR_NUMBER(), ERROR_STATE(), ERROR_SEVERITY(), ERROR_LINE(), ERROR_PROCEDURE(), ERROR_MESSAGE(), GETDATE());
-	
-	
-	SET @OutResult = 50008;   -- error en BD
-
-END CATCH
-SET NOCOUNT OFF;
+    SET NOCOUNT OFF;
 END;
-GO
-
-
-
