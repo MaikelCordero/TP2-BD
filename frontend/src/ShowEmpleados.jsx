@@ -4,7 +4,7 @@ import Swal from 'sweetalert2';
 import withReactContent from 'sweetalert2-react-content';
 import { show_alerta } from './functions';
 
-function ShowProducts(username) {
+function ShowEmpleados() {
     const api = 'http://localhost:5000/api'
     const [empleados, setEmpleados] = useState([]);
     const [id, setId] = useState('');
@@ -56,8 +56,20 @@ const loginUser = async (userName,password) => {
         setPassword('');
     })
     .catch(function(error){
-        show_alerta('Error en la solicitud','error');
-        console.log(error);
+        var msj = error.response.data.msg;
+        if(error.response.status === 400){
+            show_alerta(msj,'warning');
+        }
+        else if(error.response.status === 401){
+            show_alerta(msj,'warning');
+        }
+        else if(error.response.status === 402){
+            show_alerta(msj, 'warning')
+        }
+        else{
+            show_alerta(msj,'error');
+            console.log(error);
+        }
     });
 }
 
@@ -94,8 +106,17 @@ const getEmpleados = async () => {
         console.log(empleados);
     })
     .catch(function(error){
-        show_alerta('Error en la solicitud','error');
-        console.log(error);
+        var msj = error.response.data.msg;
+        if(error.response.status === 400){
+            show_alerta(msj,'warning');
+        }
+        else if(error.response.status === 401){
+            show_alerta(msj,'warning');
+        }
+        else{
+            show_alerta(msj,'error');
+            console.log(error);
+        }
     });
 }
 
@@ -443,7 +464,7 @@ const InsertarEmpleado = async(parametros, url) => {
     });
 }
 
-const deleteEmpleado= (id) =>{
+const deleteEmpleado= (id, name) =>{
     const MySwal = withReactContent(Swal);
     MySwal.fire({
         title:'¿Seguro de eliminar el empleado '+name+' ?',
@@ -888,4 +909,4 @@ const renderEmpleados = () => (
     )
 }
 
-export default ShowProducts
+export default ShowEmpleados

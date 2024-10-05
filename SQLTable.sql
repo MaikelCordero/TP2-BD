@@ -1,7 +1,7 @@
-USE [PROYECT2JF]
+USE [sistemaEmpleadosTP2]
 GO
 
-/****** Object:  Table [dbo].[BitacoraEvento]    Script Date: 22/4/2024 22:53:57 ******/
+/****** Object:  Table [dbo].[BitacoraEvento] ******/
 SET ANSI_NULLS ON
 GO
 
@@ -37,7 +37,7 @@ ALTER TABLE [dbo].[BitacoraEvento] CHECK CONSTRAINT [FK_BitacoraEvento_Usuario]
 GO
 
 
-/****** Object:  Table [dbo].[DBError]    Script Date: 22/4/2024 22:54:13 ******/
+/****** Object:  Table [dbo].[DBError] ******/
 SET ANSI_NULLS ON
 GO
 
@@ -62,7 +62,7 @@ CREATE TABLE [dbo].[DBError](
 GO
 
 
-/****** Object:  Table [dbo].[Empleado]    Script Date: 22/4/2024 22:55:01 ******/
+/****** Object:  Table [dbo].[Empleado] ******/
 SET ANSI_NULLS ON
 GO
 
@@ -92,7 +92,7 @@ ALTER TABLE [dbo].[Empleado] CHECK CONSTRAINT [FK_Empleado_Puesto]
 GO
 
 
-/****** Object:  Table [dbo].[Error]    Script Date: 22/4/2024 22:55:28 ******/
+/****** Object:  Table [dbo].[Error] ******/
 SET ANSI_NULLS ON
 GO
 
@@ -110,8 +110,7 @@ CREATE TABLE [dbo].[Error](
 ) ON [PRIMARY]
 GO
 
-
-/****** Object:  Table [dbo].[Movimiento]    Script Date: 22/4/2024 22:55:54 ******/
+/****** Object:  Table [dbo].[Movimiento]    Script Date: 4/10/2024 21:55:29 ******/
 SET ANSI_NULLS ON
 GO
 
@@ -149,8 +148,15 @@ GO
 ALTER TABLE [dbo].[Movimiento] CHECK CONSTRAINT [FK_Movimiento_Usuario]
 GO
 
+ALTER TABLE [dbo].[Movimiento]  WITH CHECK ADD  CONSTRAINT [FK_Movimiento_Empleado] FOREIGN KEY([IdEmpleado])
+REFERENCES [dbo].[Empleado] ([Id])
+GO
 
-/****** Object:  Table [dbo].[Puesto]    Script Date: 22/4/2024 22:56:16 ******/
+ALTER TABLE [dbo].[Movimiento] CHECK CONSTRAINT [FK_Movimiento_Empleado]
+GO
+
+
+/****** Object:  Table [dbo].[Puesto] ******/
 SET ANSI_NULLS ON
 GO
 
@@ -169,7 +175,7 @@ CREATE TABLE [dbo].[Puesto](
 GO
 
 
-/****** Object:  Table [dbo].[TipoEvento]    Script Date: 22/4/2024 22:57:05 ******/
+/****** Object:  Table [dbo].[TipoEvento] ******/
 SET ANSI_NULLS ON
 GO
 
@@ -187,7 +193,7 @@ CREATE TABLE [dbo].[TipoEvento](
 GO
 
 
-/****** Object:  Table [dbo].[TipoMovimiento]    Script Date: 22/4/2024 22:57:19 ******/
+/****** Object:  Table [dbo].[TipoMovimiento] ******/
 SET ANSI_NULLS ON
 GO
 
@@ -206,7 +212,7 @@ CREATE TABLE [dbo].[TipoMovimiento](
 GO
 
 
-/****** Object:  Table [dbo].[Usuario]    Script Date: 22/4/2024 22:58:01 ******/
+/****** Object:  Table [dbo].[Usuario] ******/
 SET ANSI_NULLS ON
 GO
 

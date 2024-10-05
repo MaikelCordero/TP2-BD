@@ -1,5 +1,5 @@
 import { Routes, Route, BrowserRouter } from 'react-router-dom'
-import ShowProducts from './ShowProducts.jsx'
+import ShowEmpleados from './ShowEmpleados.jsx'
 import './App.css'
 import 'bootstrap/dist/css/bootstrap.min.css';
 import '@fortawesome/fontawesome-free/css/all.min.css';
@@ -11,7 +11,7 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<ShowProducts/>} />
+        <Route path="/" element={<ShowEmpleados/>} />
       </Routes>
     </BrowserRouter>
   )
