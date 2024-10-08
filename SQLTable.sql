@@ -1,3 +1,5 @@
+CREATE DATABASE sistemaEmpleadosTP2
+
 USE [sistemaEmpleadosTP2]
 GO
 

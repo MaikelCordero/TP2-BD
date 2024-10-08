@@ -127,6 +127,7 @@ BEGIN
         DECLARE @Descripcion NVARCHAR(2000);
         DECLARE @IdUser INT;
         DECLARE @Nombre NVARCHAR(50);
+		DECLARE @IdEmpleado INT;
 
         -- Inicialización del parámetro de salida
         SET @OutResultCode = 0;
@@ -144,7 +145,8 @@ BEGIN
         BEGIN TRANSACTION
 
         -- Obtiene el nombre del empleado
-        SELECT @Nombre = e.Nombre
+        SELECT @Nombre = e.Nombre,
+		       @IdEmpleado = e.Id
         FROM [sistemaEmpleadosTP2].[dbo].[Empleado] e
         WHERE e.ValorDocumentoIdentidad = @InvalorDocIdent;
 
@@ -164,8 +166,8 @@ BEGIN
             m.PostTime
         FROM [sistemaEmpleadosTP2].[dbo].[Movimiento] m
             INNER JOIN [sistemaEmpleadosTP2].[dbo].[TipoMovimiento] t ON m.IdTipoMovimiento = t.Id
-            INNER JOIN [sistemaEmpleadosTP2].[dbo].[Empleado] e ON m.IdEmpleado = e.ValorDocumentoIdentidad
-        WHERE m.IdEmpleado = @InvalorDocIdent
+            INNER JOIN [sistemaEmpleadosTP2].[dbo].[Empleado] e ON m.IdEmpleado = e.Id
+        WHERE m.IdEmpleado = @IdEmpleado
         ORDER BY m.Fecha DESC;
 
         -- Inserta registro en la bitácora
@@ -508,7 +510,7 @@ BEGIN
 		WHERE U.UserName = @InPostByUser;
 
         -- Obtener los datos del empleado y tipo de movimiento
-        SELECT @IdEmpleado = E.ValorDocumentoIdentidad,
+        SELECT @IdEmpleado = E.Id,
         @SaldoActual = E.SaldoVacaciones,
         @TipoAccion = T.TipoAccion
 		FROM [sistemaEmpleadosTP2].[dbo].[Empleado] E
@@ -893,7 +895,7 @@ GO
 USE [sistemaEmpleadosTP2]
 GO
 
-/****** Object:  StoredProcedure [dbo].[loginUser]    Script Date: 22/4/2024 23:00:30 ******/
+/****** Object:  StoredProcedure [dbo].[loginUser] ******/
 SET ANSI_NULLS ON
 GO
 
@@ -1212,3 +1214,4 @@ BEGIN
 
     SET NOCOUNT OFF;
 END;
+GO

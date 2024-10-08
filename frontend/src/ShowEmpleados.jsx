@@ -15,7 +15,7 @@ function ShowEmpleados() {
     const [title,setTitle]= useState('');
     const [filtro, setFiltro]= useState('');
     const [puesto, setPuesto]= useState(0);
-    const [NamePostByUser, setNamePostByUser]= useState('roger44');
+    const [NamePostByUser, setNamePostByUser]= useState('mgarrison');
     const [PostInIP, setPostInIP]= useState('');
     const [consulta, setConsulta]= useState([]);
     const [saldo, setSaldo]= useState('');
@@ -31,7 +31,7 @@ function ShowEmpleados() {
     const idVal = /^[0-9]+$/;
 
     useEffect(() => {
-        fetch("https://checkip.amazonaws.com/").then(res => res.text()).then(data => setPostInIP(data)).catch(error => console.log(error));
+        setPostInIP('186.151.100.54');
         getEmpleados();
         getFecha();
     }, [])
@@ -93,7 +93,7 @@ const getEmpleados = async () => {
         {
             varBuscar: filtro,
             NamePostByUser: NamePostByUser,
-            PostInIP: PostInIP
+            PostInIP
         },
         {
         headers: {
